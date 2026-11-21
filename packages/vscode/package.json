@@ -4,6 +4,11 @@
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
   "version": "0.1.0",
   "publisher": "archpilot",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0F172A",
+    "theme": "dark"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
