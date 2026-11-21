@@ -191,7 +191,7 @@ export async function runContextBloatCheck(
     findings,
     tokenFootprint: {
       alwaysOnInstructionTokens,
-      tokenSinks: tokenSinks.slice(0, 10),
+      tokenSinks,
       totalSinkTokens,
       costEstimate: {
         modelLabel,
