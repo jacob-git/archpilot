@@ -53,12 +53,13 @@ function printReport(report: AuditReport): void {
     console.log(`${DIM}Detected Stack: ${stackTags.join(' · ')}${RESET}`);
   }
   const tf = report.tokenFootprint;
-  const sinkSummary =
-    tf.tokenSinks.length > 0
-      ? `${YELLOW}${tf.tokenSinks.length} token sinks (~${tf.totalSinkTokens.toLocaleString('en-US')} tokens)${RESET}`
-      : `${DIM}0 unignored token sinks${RESET}`;
+  const c = tf.costEstimate;
+  const savingsPart =
+    c.potentialMonthlySavingsUsd > 0
+      ? ` · ${GREEN}Save ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo/dev${RESET}`
+      : '';
   console.log(
-    `${DIM}Token Footprint: ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tokens/turn · ${RESET}${sinkSummary}`
+    `${DIM}Token Cost (${c.modelLabel}): ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tok/turn (~$${c.alwaysOnMonthlyUsd.toFixed(2)}/mo) · ${tf.tokenSinks.length} sinks (~$${c.sinkMonthlyRiskUsd.toFixed(2)}/mo risk)${RESET}${savingsPart}`
   );
   console.log('');
 

@@ -77,12 +77,13 @@ export function formatMarkdown(report: AuditReport): string {
   }
 
   const tf = report.tokenFootprint;
-  const sinkText =
-    tf.tokenSinks.length > 0
-      ? ` · ${tf.tokenSinks.length} token sinks (~${tf.totalSinkTokens.toLocaleString('en-US')} tokens)`
-      : ' · 0 unignored token sinks';
+  const c = tf.costEstimate;
+  const savingsText =
+    c.potentialMonthlySavingsUsd > 0
+      ? ` · **Potential savings: ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo/dev**`
+      : '';
   lines.push(
-    `**Token Footprint:** ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tokens/turn${sinkText}`
+    `**Token Cost (${c.modelLabel}):** ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tok/turn (~$${c.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev) · ${tf.tokenSinks.length} token sinks (~$${c.sinkMonthlyRiskUsd.toFixed(2)}/mo risk)${savingsText}`
   );
 
   lines.push('', '| Category | Score | Findings |', '| :--- | :---: | :---: |');

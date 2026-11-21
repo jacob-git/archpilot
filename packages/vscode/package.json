@@ -41,6 +41,21 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "ArchPilot",
+      "properties": {
+        "archpilot.costPerMillionInputTokens": {
+          "type": "number",
+          "default": 3,
+          "description": "Input token price in USD per 1M tokens used for monthly cost estimates (e.g., 0.30 for Flash/Mini, 3 for Sonnet/GPT-4o, 15 for Opus)."
+        },
+        "archpilot.modelPresetLabel": {
+          "type": "string",
+          "default": "Standard ($3/1M)",
+          "description": "Display label for the selected model pricing tier."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -109,6 +124,16 @@
         "command": "archpilot.addToAiIgnore",
         "title": "Add File to .aiignore (Save Agent Tokens)",
         "icon": "$(filter)"
+      },
+      {
+        "command": "archpilot.selectModelPreset",
+        "title": "ArchPilot: Select Model Pricing Preset",
+        "icon": "$(credit-card)"
+      },
+      {
+        "command": "archpilot.optimizeTokenCost",
+        "title": "Optimize Token Cost (Auto-Ignore Sinks)",
+        "icon": "$(zap)"
       }
     ],
     "menus": {
@@ -174,6 +199,16 @@
           "command": "archpilot.addToAiIgnore",
           "when": "view == archpilot.auditView && viewItem =~ /\\.file$/",
           "group": "2_ignore@2"
+        },
+        {
+          "command": "archpilot.optimizeTokenCost",
+          "when": "view == archpilot.auditView && (viewItem == archpilot.tokenCost.hasSavings || viewItem == archpilot.project.hasIssues)",
+          "group": "1_fix@3"
+        },
+        {
+          "command": "archpilot.selectModelPreset",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.tokenCost/",
+          "group": "2_pricing@1"
         }
       ]
     }

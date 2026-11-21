@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type {
+  AuditOptions,
   AuditReport,
   CategoryId,
   CategoryScore,
@@ -59,7 +60,10 @@ function toGrade(score: number): AuditReport['grade'] {
   return 'F';
 }
 
-export async function auditRepository(rootDir: string): Promise<AuditReport> {
+export async function auditRepository(
+  rootDir: string,
+  options?: AuditOptions
+): Promise<AuditReport> {
   const start = Date.now();
   const resolvedRoot = path.resolve(rootDir);
   const { config, hasConfigFile } = await loadConfig(resolvedRoot);
@@ -97,7 +101,7 @@ export async function auditRepository(rootDir: string): Promise<AuditReport> {
     runInstructionsCheck(ctx),
     runBoundariesCheck(ctx, hasConfigFile),
     runStackPacksCheck(ctx),
-    runContextBloatCheck(ctx),
+    runContextBloatCheck(ctx, options),
     runVerifiabilityCheck(ctx),
   ]);
 

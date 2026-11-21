@@ -10,6 +10,7 @@ export {
 export { formatMarkdown, formatSarif } from './formatters.js';
 export type {
   ArchPilotConfig,
+  AuditOptions,
   AuditReport,
   AuditSummary,
   BoundaryRule,
@@ -19,6 +20,7 @@ export type {
   DetectedStack,
   Finding,
   Severity,
+  TokenCostEstimate,
   TokenFootprint,
   TokenSink,
 } from './types.js';

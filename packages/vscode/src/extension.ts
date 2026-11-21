@@ -23,6 +23,7 @@ interface FolderAudit {
 type TreeNode =
   | { kind: 'folder'; audit: FolderAudit }
   | { kind: 'summary'; audit: FolderAudit }
+  | { kind: 'tokenCost'; audit: FolderAudit }
   | { kind: 'category'; category: CategoryScore; audit: FolderAudit }
   | { kind: 'finding'; finding: Finding; audit: FolderAudit };
 
@@ -102,6 +103,55 @@ class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       return item;
     }
 
+    if (node.kind === 'tokenCost') {
+      const { report } = node.audit;
+      const tf = report.tokenFootprint;
+      const c = tf.costEstimate;
+      const totalMonthly = c.alwaysOnMonthlyUsd + c.sinkMonthlyRiskUsd;
+      const hasSavings = c.potentialMonthlySavingsUsd > 0;
+      const label = hasSavings
+        ? `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev (Save ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo)`
+        : `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev`;
+
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      item.description = `~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tok/turn · ${c.modelLabel}`;
+      item.iconPath = new vscode.ThemeIcon(
+        hasSavings ? 'flame' : 'pulse',
+        hasSavings
+          ? new vscode.ThemeColor('problemsWarningIcon.foreground')
+          : new vscode.ThemeColor('testing.iconPassed')
+      );
+      item.contextValue = hasSavings ? 'archpilot.tokenCost.hasSavings' : 'archpilot.tokenCost.clean';
+      item.command = {
+        command: 'archpilot.selectModelPreset',
+        title: 'Select Model Pricing Preset',
+      };
+
+      const calcTier = (rate: number) =>
+        (
+          (tf.alwaysOnInstructionTokens * c.turnsPerMonth + tf.totalSinkTokens * 110) *
+          rate /
+          1_000_000
+        ).toFixed(2);
+
+      item.tooltip = [
+        `Model Tier: ${c.modelLabel} (${c.turnsPerMonth.toLocaleString('en-US')} turns/mo)`,
+        `Always-on instructions: ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tok/turn (~$${c.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev)`,
+        `Unignored token sinks: ${tf.tokenSinks.length} files / ~${tf.totalSinkTokens.toLocaleString('en-US')} tokens (~$${c.sinkMonthlyRiskUsd.toFixed(2)}/mo risk)`,
+        hasSavings
+          ? `Potential savings: ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo/dev (~$${(c.potentialMonthlySavingsUsd * 10).toFixed(0)}/mo for a 10-dev team)`
+          : 'No unignored token sinks detected.',
+        '',
+        '3-Tier Monthly Cost Comparison (per dev):',
+        `• Fast / Flash ($0.30/1M): ~$${calcTier(0.3)}/mo`,
+        `• Standard / Sonnet / GPT-4o ($3/1M): ~$${calcTier(3)}/mo`,
+        `• Frontier / Opus ($15/1M): ~$${calcTier(15)}/mo`,
+        '',
+        'Click to change model pricing preset · Right-click to Optimize Token Cost',
+      ].join('\n');
+      return item;
+    }
+
     if (node.kind === 'category') {
       const hasFindings = node.category.findings.length > 0;
       const item = new vscode.TreeItem(
@@ -171,6 +221,7 @@ class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         const single = this.audits[0];
         return [
           { kind: 'summary', audit: single },
+          { kind: 'tokenCost', audit: single },
           ...single.report.categories.map(
             (category): TreeNode => ({
               kind: 'category',
@@ -184,13 +235,16 @@ class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     }
 
     if (element.kind === 'folder') {
-      return element.audit.report.categories.map(
-        (category): TreeNode => ({
-          kind: 'category',
-          category,
-          audit: element.audit,
-        })
-      );
+      return [
+        { kind: 'tokenCost', audit: element.audit },
+        ...element.audit.report.categories.map(
+          (category): TreeNode => ({
+            kind: 'category',
+            category,
+            audit: element.audit,
+          })
+        ),
+      ];
     }
 
     if (element.kind === 'category') {
@@ -296,11 +350,18 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     try {
+      const cfg = vscode.workspace.getConfiguration('archpilot');
+      const inputPerMillionUsd = cfg.get<number>('costPerMillionInputTokens', 3);
+      const modelLabel = cfg.get<string>('modelPresetLabel', `Standard ($${inputPerMillionUsd}/1M)`);
+
       const audits: FolderAudit[] = await Promise.all(
         folders.map(async (folder) => ({
           name: folder.name,
           rootDir: folder.uri.fsPath,
-          report: await auditRepository(folder.uri.fsPath),
+          report: await auditRepository(folder.uri.fsPath, {
+            inputPerMillionUsd,
+            modelLabel,
+          }),
         }))
       );
 
@@ -506,6 +567,94 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showInformationMessage(
         `Added "${node.finding.file}" to .aiignore to reduce AI agent token burn.`
       );
+    }),
+
+    vscode.commands.registerCommand('archpilot.selectModelPreset', async () => {
+      const presets = [
+        { label: 'Fast / Flash / Mini ($0.30/1M)', rate: 0.3, short: 'Fast ($0.30/1M)' },
+        { label: 'Standard / Sonnet / GPT-4o ($3/1M)', rate: 3, short: 'Standard ($3/1M)' },
+        { label: 'Frontier / Opus ($15/1M)', rate: 15, short: 'Frontier ($15/1M)' },
+        { label: 'Custom rate ($ per 1M input tokens)...', rate: -1, short: 'Custom' },
+      ];
+      const picked = await vscode.window.showQuickPick(presets, {
+        placeHolder: 'Select AI model pricing tier for monthly token cost estimates',
+      });
+      if (!picked) return;
+
+      let rate = picked.rate;
+      let shortLabel = picked.short;
+      if (rate < 0) {
+        const raw = await vscode.window.showInputBox({
+          prompt: 'Enter input token cost in USD per 1M tokens (e.g., 2.5)',
+          value: '3',
+          validateInput: (v) => (Number(v) > 0 ? undefined : 'Enter a positive number'),
+        });
+        if (!raw) return;
+        rate = Number(raw);
+        shortLabel = `Custom ($${rate}/1M)`;
+      }
+
+      const cfg = vscode.workspace.getConfiguration('archpilot');
+      await cfg.update('costPerMillionInputTokens', rate, vscode.ConfigurationTarget.Global);
+      await cfg.update('modelPresetLabel', shortLabel, vscode.ConfigurationTarget.Global);
+      await runAudit();
+    }),
+
+    vscode.commands.registerCommand('archpilot.optimizeTokenCost', async (node?: TreeNode) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to optimize token cost');
+      if (!audit) return;
+
+      const tf = audit.report.tokenFootprint;
+      const savedEstimate = tf.costEstimate.potentialMonthlySavingsUsd;
+      let addedCount = 0;
+
+      if (tf.tokenSinks.length > 0) {
+        const aiIgnorePath = path.join(audit.rootDir, '.aiignore');
+        let existing = (await exists(aiIgnorePath)) ? await readFile(aiIgnorePath, 'utf8') : '';
+        const existingLines = new Set(
+          existing
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean)
+        );
+        const toAdd = tf.tokenSinks
+          .map((s) => s.file)
+          .filter((f) => !existingLines.has(f));
+
+        if (toAdd.length > 0) {
+          const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+          await writeFile(aiIgnorePath, `${existing}${prefix}${toAdd.join('\n')}\n`, 'utf8');
+          addedCount = toAdd.length;
+        }
+      }
+
+      await runAudit();
+
+      const hasBloatedInstructions = audit.report.findings.some(
+        (f) => f.id === 'instruction-token-budget'
+      );
+
+      if (addedCount > 0 && !hasBloatedInstructions) {
+        void vscode.window.showInformationMessage(
+          `Added ${addedCount} token sink${addedCount > 1 ? 's' : ''} to .aiignore — estimated savings ~$${savedEstimate.toFixed(2)}/mo/dev!`
+        );
+      } else if (hasBloatedInstructions) {
+        const msg =
+          addedCount > 0
+            ? `Added ${addedCount} token sinks to .aiignore. Your always-on instructions are still ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn — copy a prompt to compress them?`
+            : `Your always-on instructions are ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn (~$${tf.costEstimate.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev). Copy a prompt to compress them by 50%?`;
+        const choice = await vscode.window.showInformationMessage(msg, 'Copy Compression Prompt');
+        if (choice === 'Copy Compression Prompt') {
+          await vscode.env.clipboard.writeText(
+            `Please compress the always-on AI instruction files (AGENTS.md / CLAUDE.md / .cursor/rules) in **${audit.name}** by ~50% (target under 2,500 total tokens) while keeping every critical command, architecture boundary, and convention intact. Move verbose examples into on-demand docs.`
+          );
+          void vscode.window.showInformationMessage('Copied instruction compression prompt to clipboard.');
+        }
+      } else {
+        void vscode.window.showInformationMessage(
+          `${audit.name} already has 0 unignored token sinks and lean instruction tokens.`
+        );
+      }
     }),
 
     vscode.commands.registerCommand('archpilot.copyFixPrompt', async (node?: TreeNode) => {

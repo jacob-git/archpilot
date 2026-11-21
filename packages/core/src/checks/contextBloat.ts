@@ -1,6 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { CheckContext, Finding, TokenFootprint, TokenSink } from '../types.js';
+import type {
+  AuditOptions,
+  CheckContext,
+  Finding,
+  TokenFootprint,
+  TokenSink,
+} from '../types.js';
 import { CODE_EXTENSIONS } from '../scanner.js';
 
 const INSTRUCTION_FILES = new Set([
@@ -46,7 +52,10 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-export async function runContextBloatCheck(ctx: CheckContext): Promise<{
+export async function runContextBloatCheck(
+  ctx: CheckContext,
+  options?: AuditOptions
+): Promise<{
   findings: Finding[];
   tokenFootprint: TokenFootprint;
 }> {
@@ -157,12 +166,41 @@ export async function runContextBloatCheck(ctx: CheckContext): Promise<{
     });
   }
 
+  const inputPerMillionUsd = options?.inputPerMillionUsd ?? 3;
+  const turnsPerMonth = options?.turnsPerMonth ?? 2200;
+  const modelLabel = options?.modelLabel ?? `Standard ($${inputPerMillionUsd}/1M)`;
+  const sinkReadsPerMonth = 110; // ~5 agent file reads/day x 22 workdays
+
+  const alwaysOnMonthlyUsd = Number(
+    ((alwaysOnInstructionTokens * turnsPerMonth * inputPerMillionUsd) / 1_000_000).toFixed(2)
+  );
+  const sinkMonthlyRiskUsd = Number(
+    ((totalSinkTokens * sinkReadsPerMonth * inputPerMillionUsd) / 1_000_000).toFixed(2)
+  );
+  const excessInstructionTokens = Math.max(
+    0,
+    alwaysOnInstructionTokens - ctx.config.maxInstructionTokens
+  );
+  const excessInstructionUsd =
+    (excessInstructionTokens * turnsPerMonth * inputPerMillionUsd) / 1_000_000;
+  const potentialMonthlySavingsUsd = Number(
+    (sinkMonthlyRiskUsd + excessInstructionUsd).toFixed(2)
+  );
+
   return {
     findings,
     tokenFootprint: {
       alwaysOnInstructionTokens,
       tokenSinks: tokenSinks.slice(0, 10),
       totalSinkTokens,
+      costEstimate: {
+        modelLabel,
+        inputPerMillionUsd,
+        turnsPerMonth,
+        alwaysOnMonthlyUsd,
+        sinkMonthlyRiskUsd,
+        potentialMonthlySavingsUsd,
+      },
     },
   };
 }

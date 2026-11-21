@@ -55,10 +55,26 @@ export interface TokenSink {
   estimatedTokens: number;
 }
 
+export interface TokenCostEstimate {
+  modelLabel: string;
+  inputPerMillionUsd: number;
+  turnsPerMonth: number;
+  alwaysOnMonthlyUsd: number;
+  sinkMonthlyRiskUsd: number;
+  potentialMonthlySavingsUsd: number;
+}
+
 export interface TokenFootprint {
   alwaysOnInstructionTokens: number;
   tokenSinks: TokenSink[];
   totalSinkTokens: number;
+  costEstimate: TokenCostEstimate;
+}
+
+export interface AuditOptions {
+  inputPerMillionUsd?: number;
+  turnsPerMonth?: number;
+  modelLabel?: string;
 }
 
 export interface AuditReport {
