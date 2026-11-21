@@ -44,6 +44,14 @@ ArchPilot runs fast, **100% offline & deterministic** checks (zero API keys, zer
 
 ---
 
+## Privacy & Enterprise NFR Guarantee
+
+- **100% Local & Air-Gapped:** Zero telemetry, zero external network calls, zero API keys required. Your source code never leaves your machine.
+- **Fast on Large Repos:** Debounced, non-overlapping re-audits with `.gitignore` / `.aiignore` / `.cursorignore` awareness so VS Code stays snappy even in large monorepos.
+- **NFR Guardrails Built In:** Flags outbound HTTP calls missing timeouts, swallowed `catch {}` errors, blocking `*FileSync` I/O in Node APIs, missing `/healthz` probes, flaky test sleeps, and untested blast-radius gaps.
+
+---
+
 ## Links
 
 - [GitHub Repository](https://github.com/jacob-git/archpilot)

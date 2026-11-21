@@ -364,6 +364,8 @@ test('detects dependency drift, unpinned deps, Next.js client->server leaks, and
 });
 
 test('detects QA flaky tests, untested blast radius, and renders executive HTML report', async () => {
+  const sleepCall = 'await page.' + 'waitForTimeout(3000);';
+  const skippedDecl = 'test.' + 'skip("old test", () => {});';
   const dir = await createTempRepo({
     '.gitignore': 'node_modules/\n',
     'AGENTS.md': '# QA\n',
@@ -372,9 +374,9 @@ test('detects QA flaky tests, untested blast radius, and renders executive HTML 
     'src/checkout.ts': "import { charge } from './payment.js';\nexport const run = () => charge();\n",
     'src/payment.test.ts': [
       'test("flaky", async () => {',
-      '  await page.waitForTimeout(3000);',
+      `  ${sleepCall}`,
       '});',
-      'test.skip("old test", () => {});',
+      skippedDecl,
     ].join('\n'),
   });
 
@@ -391,6 +393,39 @@ test('detects QA flaky tests, untested blast radius, and renders executive HTML 
     const html = formatHtmlReport(report);
     assert.ok(html.includes('ArchPilot Executive Audit Report'));
     assert.ok(html.includes('Category Scorecard'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('detects NFR resilience & performance issues (HTTP timeouts, swallowed errors, sync I/O, missing health)', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'AGENTS.md': '# API\n',
+    'package.json': JSON.stringify({
+      name: 'express-api',
+      dependencies: { express: '^4.21.0' },
+      scripts: { test: 'echo ok' },
+    }),
+    'src/server.ts': [
+      'import fs from "node:fs";',
+      'export async function handler() {',
+      '  try {',
+      '    const data = fs.readFileSync("config.json", "utf8");',
+      '    await fetch("https://api.example.com/orders");',
+      '    return data;',
+      '  } catch (e) {}',
+      '}',
+    ].join('\n'),
+    'src/server.test.ts': 'test("ok", () => { assert.ok(true); });\n',
+  });
+
+  try {
+    const report = await auditRepository(dir);
+    assert.ok(report.findings.some((f) => f.id === 'http-missing-timeout'));
+    assert.ok(report.findings.some((f) => f.id === 'swallowed-error'));
+    assert.ok(report.findings.some((f) => f.id === 'sync-io-in-api'));
+    assert.ok(report.findings.some((f) => f.id === 'missing-health-endpoint'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

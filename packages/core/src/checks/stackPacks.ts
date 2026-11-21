@@ -325,5 +325,124 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
     );
   }
 
+  // 7. Non-Functional Requirements (Resilience, Observability & Performance)
+  const testFileRe = /(?:^|\/)(?:__tests__\/|tests?\/|.*\.(?:test|spec|cy)\.[a-z0-9]+|test_.*\.py|.*_test\.go|.*Test\.java)$/i;
+  const prodCodeFiles = ctx.files.filter(
+    (f) => CODE_EXTENSIONS.has(f.ext) && !testFileRe.test(f.relPath) && f.sizeBytes <= 250_000
+  );
+  const hasNodeApi =
+    detectedStack.frameworks.includes('Express') ||
+    detectedStack.frameworks.includes('Fastify') ||
+    detectedStack.frameworks.includes('NestJS') ||
+    detectedStack.frameworks.includes('Hono');
+
+  let foundHealthEndpoint = false;
+
+  await Promise.all(
+    prodCodeFiles.map(async (file) => {
+      let content: string;
+      try {
+        content = await readFile(file.absPath, 'utf8');
+      } catch {
+        return;
+      }
+
+      if (/\/healthz?\b|\/readyz?\b|\/livez?\b|actuator/i.test(content)) {
+        foundHealthEndpoint = true;
+      }
+
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trimStart();
+        if (trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('*')) {
+          continue;
+        }
+
+        // Outbound HTTP call missing timeout
+        if (
+          /\b(?:fetch|axios\.(?:get|post|put|delete|patch)|requests\.(?:get|post|put|delete|patch))\s*\(/.test(
+            line
+          )
+        ) {
+          const win = lines.slice(i, Math.min(lines.length, i + 7)).join('\n');
+          if (!/\b(?:timeout|signal|AbortController|AbortSignal)\b/i.test(win)) {
+            findings.push({
+              id: 'http-missing-timeout',
+              category: 'stack',
+              severity: 'warning',
+              file: file.relPath,
+              line: i + 1,
+              message: 'Outbound HTTP call has no explicit timeout/AbortSignal — can hang workers under network stalls.',
+              suggestion: 'Pass `signal: AbortSignal.timeout(10_000)` (JS/TS) or `timeout=10` (Python/axios).',
+            });
+          }
+        }
+
+        // Swallowed exception (empty catch block or bare Python except: pass)
+        if (
+          /\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}/.test(line) ||
+          /^\s*except\b[^:]*:\s*pass\b/.test(line)
+        ) {
+          findings.push({
+            id: 'swallowed-error',
+            category: 'stack',
+            severity: 'warning',
+            file: file.relPath,
+            line: i + 1,
+            message: 'Empty catch/except block swallows errors silently — degrades production observability.',
+            suggestion: 'Log the error with context, rethrow, or explicitly document why ignoring is safe.',
+          });
+        }
+
+        // Blocking sync filesystem I/O inside Node API handlers
+        if (
+          hasNodeApi &&
+          /\b(?:readFileSync|writeFileSync|appendFileSync)\s*\(/.test(line)
+        ) {
+          findings.push({
+            id: 'sync-io-in-api',
+            category: 'stack',
+            severity: 'warning',
+            file: file.relPath,
+            line: i + 1,
+            message: 'Blocking synchronous filesystem I/O (`*FileSync`) detected in a Node API service.',
+            suggestion: 'Use async `fs/promises` (`readFile` / `writeFile`) so the Node event loop stays responsive.',
+          });
+        }
+      }
+    })
+  );
+
+  // Check for missing health endpoint in detected REST APIs
+  if (hasRestApi && !foundHealthEndpoint) {
+    let hasActuatorDep = false;
+    if (hasSpringBoot) {
+      const manifests = ctx.files.filter(
+        (f) => f.relPath.endsWith('pom.xml') || f.relPath.endsWith('build.gradle') || f.relPath.endsWith('build.gradle.kts')
+      );
+      for (const mf of manifests.slice(0, 3)) {
+        try {
+          const raw = await readFile(mf.absPath, 'utf8');
+          if (/spring-boot-starter-actuator/i.test(raw)) {
+            hasActuatorDep = true;
+            break;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (!hasActuatorDep) {
+      findings.push({
+        id: 'missing-health-endpoint',
+        category: 'stack',
+        severity: 'info',
+        message: 'REST API detected without a `/health` or `/healthz` readiness endpoint.',
+        suggestion: 'Expose a lightweight `/healthz` endpoint (or Spring Actuator) for load balancers and Kubernetes probes.',
+      });
+    }
+  }
+
   return findings;
 }
