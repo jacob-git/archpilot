@@ -149,6 +149,11 @@
         "command": "archpilot.checkBlastRadius",
         "title": "Check Git Diff & Blast Radius",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "archpilot.fixWithAiChat",
+        "title": "Fix with AI Chat",
+        "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
@@ -191,9 +196,14 @@
           "group": "1_fix@1"
         },
         {
-          "command": "archpilot.copyFixPrompt",
+          "command": "archpilot.fixWithAiChat",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
           "group": "1_fix@2"
+        },
+        {
+          "command": "archpilot.copyFixPrompt",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
+          "group": "1_fix@3"
         },
         {
           "command": "archpilot.generateAgentsMd",
@@ -221,9 +231,14 @@
           "group": "1_fix@1"
         },
         {
-          "command": "archpilot.copyFixPrompt",
+          "command": "archpilot.fixWithAiChat",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding(\\b|$)/",
           "group": "1_fix@2"
+        },
+        {
+          "command": "archpilot.copyFixPrompt",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding(\\b|$)/",
+          "group": "1_fix@3"
         },
         {
           "command": "archpilot.ignoreFindingFile",

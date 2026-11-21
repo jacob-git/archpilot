@@ -25,6 +25,9 @@ export const DETERMINISTIC_FIXABLE_RULES = new Set([
   'missing-agent-instructions',
   'no-boundary-rules',
   'missing-gitignore',
+  'exposed-secret-file',
+  'poisoned-agent-instructions',
+  'insecure-tls',
 ]);
 
 const NON_IGNORABLE_FILES = new Set([

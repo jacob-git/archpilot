@@ -435,8 +435,72 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
+      if (finding.id === 'exposed-secret-file' && finding.file) {
+        await appendToIgnoreFile(path.join(audit.rootDir, '.gitignore'), [finding.file]);
+        await runAudit();
+        void vscode.window.showWarningMessage(
+          `Added "${finding.file}" to .gitignore. Remember to run \`git rm --cached ${finding.file}\` if tracked and rotate exposed credentials.`
+        );
+        return;
+      }
+
+      if (finding.id === 'poisoned-agent-instructions' && finding.file) {
+        const target = path.join(audit.rootDir, finding.file);
+        const raw = await readFile(target, 'utf8');
+        const cleaned = raw.replace(/[\u200B-\u200D\u202A-\u202E\u2066-\u2069]/g, '');
+        await writeFile(target, cleaned, 'utf8');
+        await openFileInEditor(target);
+        await runAudit();
+        void vscode.window.showInformationMessage(
+          `Stripped hidden invisible Unicode characters from ${finding.file}.`
+        );
+        return;
+      }
+
+      if (finding.id === 'insecure-tls' && finding.file) {
+        const target = path.join(audit.rootDir, finding.file);
+        const raw = await readFile(target, 'utf8');
+        const lines = raw.split(/\r?\n/);
+        const idx = Math.max(0, (finding.line ?? 1) - 1);
+        if (lines[idx]) {
+          lines[idx] = lines[idx]
+            .replace(/rejectUnauthorized\s*:\s*false/g, 'rejectUnauthorized: true')
+            .replace(/\bverify\s*=\s*False\b/g, 'verify=True');
+          await writeFile(target, lines.join('\n'), 'utf8');
+          await openFileInEditor(target);
+          await runAudit();
+          void vscode.window.showInformationMessage(
+            `Re-enabled TLS certificate verification in ${finding.file}:${finding.line ?? 1}.`
+          );
+          return;
+        }
+      }
+
       await vscode.env.clipboard.writeText(generateFixPrompt(audit.report, finding));
       void vscode.window.showInformationMessage('Copied targeted AI Fix Prompt to clipboard.');
+    }),
+
+    vscode.commands.registerCommand('archpilot.fixWithAiChat', async (node?: TreeNode) => {
+      let prompt: string;
+      let label: string;
+      if (node && node.kind === 'finding') {
+        prompt = generateFixPrompt(node.audit.report, node.finding);
+        label = `[${node.finding.id}]`;
+      } else {
+        const audit = await resolveAuditForNode(node, 'Select project folder to fix with AI Chat');
+        if (!audit) return;
+        prompt = generateFixPrompt(audit.report);
+        label = audit.name;
+      }
+
+      try {
+        await vscode.commands.executeCommand('workbench.action.chat.open', { query: prompt });
+      } catch {
+        await vscode.env.clipboard.writeText(prompt);
+        void vscode.window.showInformationMessage(
+          `Copied AI Fix Prompt for ${label} to clipboard — paste it into your AI chat.`
+        );
+      }
     }),
 
     vscode.commands.registerCommand('archpilot.ignoreFindingFile', async (node?: TreeNode) => {

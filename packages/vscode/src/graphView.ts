@@ -207,8 +207,8 @@ function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
   }
 
   function render() {
-    edgesLayer.innerHTML = '';
-    nodesLayer.innerHTML = '';
+    edgesLayer.replaceChildren();
+    nodesLayer.replaceChildren();
 
     for (const e of data.edges) {
       const p1 = positions.get(e.from);
@@ -322,36 +322,84 @@ function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
   function showInspector(n) {
     const outgoing = data.edges.filter((e) => e.from === n.id);
     const incoming = data.edges.filter((e) => e.to === n.id);
-    const alerts = [];
-    if (n.hasViolation) alerts.push('<span class="pill bad">Boundary Violation</span>');
-    if (n.inCycle) alerts.push('<span class="pill bad">Circular Dependency</span>');
-    if (n.estimatedTokens > 25000) alerts.push('<span class="pill warn">Token-Heavy Module</span>');
+    inspector.replaceChildren();
 
-    inspector.innerHTML =
-      '<h3>' + n.label + '</h3>' +
-      (alerts.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' + alerts.join('') + '</div>' : '') +
-      '<div class="meta-grid">' +
-        '<div class="meta-card"><div class="meta-label">Files</div><div class="meta-val">' + n.fileCount + '</div></div>' +
-        '<div class="meta-card"><div class="meta-label">Est. Tokens</div><div class="meta-val">~' + n.estimatedTokens.toLocaleString() + '</div></div>' +
-        '<div class="meta-card"><div class="meta-label">Depends On</div><div class="meta-val">' + outgoing.length + '</div></div>' +
-        '<div class="meta-card"><div class="meta-label">Used By</div><div class="meta-val">' + incoming.length + '</div></div>' +
-      '</div>' +
-      '<div class="section-title">Sample Files (click to open)</div>' +
-      n.sampleFiles.map((f) => '<a class="file-link" data-file="' + f + '">' + f + '</a>').join('') +
-      (outgoing.length
-        ? '<div class="section-title">Outgoing Dependencies</div>' +
-          outgoing.map((e) => '<div style="margin-bottom:4px;color:' + (e.isViolation || e.isCycle ? '#f87171' : '#cbd5e1') + '">→ ' + e.to + ' (' + e.weight + ')</div>').join('')
-        : '') +
-      (incoming.length
-        ? '<div class="section-title">Incoming Dependents</div>' +
-          incoming.map((e) => '<div style="margin-bottom:4px;color:#cbd5e1">← ' + e.from + ' (' + e.weight + ')</div>').join('')
-        : '');
+    const heading = document.createElement('h3');
+    heading.textContent = n.label;
+    inspector.appendChild(heading);
 
-    inspector.querySelectorAll('.file-link').forEach((el) => {
-      el.addEventListener('click', () => {
-        vscode.postMessage({ type: 'openFile', file: el.getAttribute('data-file') });
+    const badgeRow = document.createElement('div');
+    badgeRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;';
+    const addBadge = (text, cls) => {
+      const span = document.createElement('span');
+      span.className = 'pill ' + cls;
+      span.textContent = text;
+      badgeRow.appendChild(span);
+    };
+    if (n.hasViolation) addBadge('Boundary Violation', 'bad');
+    if (n.inCycle) addBadge('Circular Dependency', 'bad');
+    if (n.estimatedTokens > 25000) addBadge('Token-Heavy Module', 'warn');
+    if (badgeRow.childElementCount > 0) inspector.appendChild(badgeRow);
+
+    const grid = document.createElement('div');
+    grid.className = 'meta-grid';
+    const addMetric = (label, val) => {
+      const card = document.createElement('div');
+      card.className = 'meta-card';
+      const l = document.createElement('div');
+      l.className = 'meta-label';
+      l.textContent = label;
+      const v = document.createElement('div');
+      v.className = 'meta-val';
+      v.textContent = val;
+      card.append(l, v);
+      grid.appendChild(card);
+    };
+    addMetric('Files', String(n.fileCount));
+    addMetric('Est. Tokens', '~' + n.estimatedTokens.toLocaleString());
+    addMetric('Depends On', String(outgoing.length));
+    addMetric('Used By', String(incoming.length));
+    inspector.appendChild(grid);
+
+    const addSection = (titleText) => {
+      const sec = document.createElement('div');
+      sec.className = 'section-title';
+      sec.textContent = titleText;
+      inspector.appendChild(sec);
+    };
+
+    addSection('Sample Files (click to open)');
+    for (const f of n.sampleFiles) {
+      const a = document.createElement('a');
+      a.className = 'file-link';
+      a.textContent = f;
+      a.addEventListener('click', () => {
+        vscode.postMessage({ type: 'openFile', file: f });
       });
-    });
+      inspector.appendChild(a);
+    }
+
+    if (outgoing.length > 0) {
+      addSection('Outgoing Dependencies');
+      for (const e of outgoing) {
+        const row = document.createElement('div');
+        row.style.marginBottom = '4px';
+        row.style.color = e.isViolation || e.isCycle ? '#f87171' : '#cbd5e1';
+        row.textContent = '→ ' + e.to + ' (' + e.weight + ')';
+        inspector.appendChild(row);
+      }
+    }
+
+    if (incoming.length > 0) {
+      addSection('Incoming Dependents');
+      for (const e of incoming) {
+        const row = document.createElement('div');
+        row.style.marginBottom = '4px';
+        row.style.color = '#cbd5e1';
+        row.textContent = '← ' + e.from + ' (' + e.weight + ')';
+        inspector.appendChild(row);
+      }
+    }
   }
 
   // Pan & zoom canvas
