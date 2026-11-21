@@ -4,6 +4,8 @@ import type { ArchPilotConfig } from './types.js';
 
 export const DEFAULT_CONFIG: ArchPilotConfig = {
   maxFileLines: 800,
+  maxInstructionTokens: 3000,
+  maxFileTokens: 12000,
   ignore: [
     'node_modules',
     '.git',
@@ -45,6 +47,14 @@ export async function loadConfig(rootDir: string): Promise<{
           typeof parsed.maxFileLines === 'number' && parsed.maxFileLines > 0
             ? parsed.maxFileLines
             : DEFAULT_CONFIG.maxFileLines,
+        maxInstructionTokens:
+          typeof parsed.maxInstructionTokens === 'number' && parsed.maxInstructionTokens > 0
+            ? parsed.maxInstructionTokens
+            : DEFAULT_CONFIG.maxInstructionTokens,
+        maxFileTokens:
+          typeof parsed.maxFileTokens === 'number' && parsed.maxFileTokens > 0
+            ? parsed.maxFileTokens
+            : DEFAULT_CONFIG.maxFileTokens,
         ignore: Array.isArray(parsed.ignore)
           ? Array.from(new Set([...DEFAULT_CONFIG.ignore, ...parsed.ignore]))
           : DEFAULT_CONFIG.ignore,

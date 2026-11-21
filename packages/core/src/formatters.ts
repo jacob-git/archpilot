@@ -76,6 +76,15 @@ export function formatMarkdown(report: AuditReport): string {
     lines.push(`**Detected Stack:** ${stackTags.map((t) => `\`${t}\``).join(' ')}`);
   }
 
+  const tf = report.tokenFootprint;
+  const sinkText =
+    tf.tokenSinks.length > 0
+      ? ` · ${tf.tokenSinks.length} token sinks (~${tf.totalSinkTokens.toLocaleString('en-US')} tokens)`
+      : ' · 0 unignored token sinks';
+  lines.push(
+    `**Token Footprint:** ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tokens/turn${sinkText}`
+  );
+
   lines.push('', '| Category | Score | Findings |', '| :--- | :---: | :---: |');
   for (const cat of report.categories) {
     lines.push(`| ${cat.label} | **${cat.score}/100** | ${cat.findings.length} |`);

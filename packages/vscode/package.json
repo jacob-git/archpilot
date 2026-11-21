@@ -104,6 +104,11 @@
         "command": "archpilot.ignoreFindingFile",
         "title": "Ignore File in archpilot.json",
         "icon": "$(eye-closed)"
+      },
+      {
+        "command": "archpilot.addToAiIgnore",
+        "title": "Add File to .aiignore (Save Agent Tokens)",
+        "icon": "$(filter)"
       }
     ],
     "menus": {
@@ -164,6 +169,11 @@
           "command": "archpilot.ignoreFindingFile",
           "when": "view == archpilot.auditView && viewItem =~ /\\.file$/",
           "group": "2_ignore@1"
+        },
+        {
+          "command": "archpilot.addToAiIgnore",
+          "when": "view == archpilot.auditView && viewItem =~ /\\.file$/",
+          "group": "2_ignore@2"
         }
       ]
     }

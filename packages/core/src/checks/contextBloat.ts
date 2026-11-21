@@ -1,40 +1,152 @@
 import { readFile } from 'node:fs/promises';
-import type { CheckContext, Finding } from '../types.js';
+import path from 'node:path';
+import type { CheckContext, Finding, TokenFootprint, TokenSink } from '../types.js';
 import { CODE_EXTENSIONS } from '../scanner.js';
 
-export async function runContextBloatCheck(ctx: CheckContext): Promise<Finding[]> {
-  const findings: Finding[] = [];
-  const codeFiles = ctx.files.filter((f) => CODE_EXTENSIONS.has(f.ext));
+const INSTRUCTION_FILES = new Set([
+  'AGENTS.md',
+  'CLAUDE.md',
+  '.cursorrules',
+  '.github/copilot-instructions.md',
+]);
 
-  // 1. Flag mega-files that degrade agent edit accuracy and context efficiency
+const TEXT_SINK_EXTENSIONS = new Set([
+  ...CODE_EXTENSIONS,
+  '.json',
+  '.csv',
+  '.sql',
+  '.xml',
+  '.svg',
+  '.yaml',
+  '.yml',
+  '.txt',
+  '.md',
+]);
+
+const STANDARD_LOCKFILES = new Set([
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'Cargo.lock',
+  'poetry.lock',
+  'Gemfile.lock',
+  'composer.lock',
+  'go.sum',
+]);
+
+function isInstructionPath(relPath: string): boolean {
+  if (INSTRUCTION_FILES.has(relPath)) return true;
+  return (
+    relPath.startsWith('.cursor/rules/') &&
+    (relPath.endsWith('.mdc') || relPath.endsWith('.md'))
+  );
+}
+
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+export async function runContextBloatCheck(ctx: CheckContext): Promise<{
+  findings: Finding[];
+  tokenFootprint: TokenFootprint;
+}> {
+  const findings: Finding[] = [];
+  const tokenSinks: TokenSink[] = [];
+  let alwaysOnInstructionTokens = 0;
+
+  // 1. Always-on instruction token budget
+  const instructionFiles = ctx.files.filter((f) => isInstructionPath(f.relPath));
+  for (const file of instructionFiles) {
+    try {
+      const content = await readFile(file.absPath, 'utf8');
+      alwaysOnInstructionTokens += estimateTokens(content);
+    } catch {
+      // ignore read errors
+    }
+  }
+
+  if (alwaysOnInstructionTokens > ctx.config.maxInstructionTokens) {
+    findings.push({
+      id: 'instruction-token-budget',
+      category: 'context',
+      severity: 'warning',
+      file: instructionFiles[0]?.relPath,
+      line: 1,
+      message: `Always-on agent instructions consume ~${alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn (budget: ${ctx.config.maxInstructionTokens.toLocaleString('en-US')}).`,
+      suggestion:
+        'Trim redundant rules or move domain-specific guidance into on-demand docs to cut per-turn LLM token costs.',
+    });
+  }
+
+  // 2. Flag oversized code files & unignored token-sink files
+  const minSinkBytes = ctx.config.maxFileTokens * 3; // conservative byte threshold before reading
   await Promise.all(
-    codeFiles.map(async (file) => {
-      // Quick byte heuristic before reading: skip tiny files
-      if (file.sizeBytes < 8_000) {
+    ctx.files.map(async (file) => {
+      const isCode = CODE_EXTENSIONS.has(file.ext);
+      const isTextSinkCandidate =
+        TEXT_SINK_EXTENSIONS.has(file.ext) &&
+        !STANDARD_LOCKFILES.has(path.posix.basename(file.relPath));
+
+      if (!isCode && !isTextSinkCandidate) return;
+      if (file.sizeBytes < 8_000) return;
+
+      // Avoid reading huge >2MB files into memory; estimate directly from byte size
+      if (file.sizeBytes > 2_000_000) {
+        const estTokens = Math.ceil(file.sizeBytes / 4);
+        if (isTextSinkCandidate && estTokens > ctx.config.maxFileTokens) {
+          tokenSinks.push({ file: file.relPath, estimatedTokens: estTokens });
+        }
         return;
       }
+
       let content: string;
       try {
         content = await readFile(file.absPath, 'utf8');
       } catch {
         return;
       }
-      const lineCount = content.split(/\r?\n/).length;
-      if (lineCount > ctx.config.maxFileLines) {
-        findings.push({
-          id: 'oversized-file',
-          category: 'context',
-          severity: 'warning',
-          file: file.relPath,
-          line: 1,
-          message: `Oversized file (${lineCount.toLocaleString('en-US')} lines; limit ${ctx.config.maxFileLines}).`,
-          suggestion: 'Split cohesive responsibilities into smaller, well-named modules.',
-        });
+
+      if (isCode) {
+        const lineCount = content.split(/\r?\n/).length;
+        if (lineCount > ctx.config.maxFileLines) {
+          findings.push({
+            id: 'oversized-file',
+            category: 'context',
+            severity: 'warning',
+            file: file.relPath,
+            line: 1,
+            message: `Oversized file (${lineCount.toLocaleString('en-US')} lines; limit ${ctx.config.maxFileLines}).`,
+            suggestion: 'Split cohesive responsibilities into smaller, well-named modules.',
+          });
+        }
+      }
+
+      if (isTextSinkCandidate && file.sizeBytes >= minSinkBytes) {
+        const estTokens = estimateTokens(content);
+        if (estTokens > ctx.config.maxFileTokens) {
+          tokenSinks.push({ file: file.relPath, estimatedTokens: estTokens });
+        }
       }
     })
   );
 
-  // 2. Check for .gitignore
+  // Sort token sinks largest-first and surface top 10
+  tokenSinks.sort((a, b) => b.estimatedTokens - a.estimatedTokens);
+  const totalSinkTokens = tokenSinks.reduce((acc, s) => acc + s.estimatedTokens, 0);
+
+  for (const sink of tokenSinks.slice(0, 10)) {
+    findings.push({
+      id: 'token-sink',
+      category: 'context',
+      severity: sink.estimatedTokens >= ctx.config.maxFileTokens * 2 ? 'warning' : 'info',
+      file: sink.file,
+      line: 1,
+      message: `Unignored token sink (~${sink.estimatedTokens.toLocaleString('en-US')} tokens; limit ${ctx.config.maxFileTokens.toLocaleString('en-US')}).`,
+      suggestion: 'Add to .aiignore / .cursorignore or split so coding agents stop burning context tokens on it.',
+    });
+  }
+
+  // 3. Check for .gitignore
   if (!ctx.fileSet.has('.gitignore')) {
     findings.push({
       id: 'missing-gitignore',
@@ -45,5 +157,12 @@ export async function runContextBloatCheck(ctx: CheckContext): Promise<Finding[]
     });
   }
 
-  return findings;
+  return {
+    findings,
+    tokenFootprint: {
+      alwaysOnInstructionTokens,
+      tokenSinks: tokenSinks.slice(0, 10),
+      totalSinkTokens,
+    },
+  };
 }

@@ -47,6 +47,15 @@ function formatStackTags(report: AuditReport): string {
   return tags.length > 0 ? tags.join(' · ') : 'generic';
 }
 
+function formatTokenLine(report: AuditReport): string {
+  const tf = report.tokenFootprint;
+  const sinks =
+    tf.tokenSinks.length > 0
+      ? `${tf.tokenSinks.length} token sinks (~${tf.totalSinkTokens.toLocaleString('en-US')} tokens)`
+      : '0 unignored token sinks';
+  return `~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tokens/turn · ${sinks}`;
+}
+
 class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -69,7 +78,7 @@ class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         vscode.TreeItemCollapsibleState.Expanded
       );
       item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
-      item.tooltip = `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\n${report.summary.filesScanned} files scanned in ${report.summary.durationMs}ms\nRight-click for actions`;
+      item.tooltip = `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\n${report.summary.filesScanned} files scanned in ${report.summary.durationMs}ms\nRight-click for actions`;
       item.iconPath = new vscode.ThemeIcon('folder');
       item.contextValue =
         report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
@@ -85,8 +94,8 @@ class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
       item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
       item.tooltip =
         report.findings.length > 0
-          ? `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nRight-click to Auto-Fix, Copy AI Fix Prompt, or Copy Badge`
-          : `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nAll checks passed! Right-click to Copy README Badge`;
+          ? `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nRight-click to Auto-Fix, Copy AI Fix Prompt, or Copy Badge`
+          : `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nAll checks passed! Right-click to Copy README Badge`;
       item.iconPath = new vscode.ThemeIcon('shield');
       item.contextValue =
         report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
@@ -475,6 +484,27 @@ export function activate(context: vscode.ExtensionContext): void {
       await runAudit();
       void vscode.window.showInformationMessage(
         `Added "${node.finding.file}" to archpilot.json ignore list.`
+      );
+    }),
+
+    vscode.commands.registerCommand('archpilot.addToAiIgnore', async (node?: TreeNode) => {
+      if (!node || node.kind !== 'finding' || !node.finding.file) return;
+      const aiIgnorePath = path.join(node.audit.rootDir, '.aiignore');
+      let existing = '';
+      if (await exists(aiIgnorePath)) {
+        existing = await readFile(aiIgnorePath, 'utf8');
+      }
+      const lines = existing
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (!lines.includes(node.finding.file)) {
+        const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+        await writeFile(aiIgnorePath, `${existing}${prefix}${node.finding.file}\n`, 'utf8');
+      }
+      await runAudit();
+      void vscode.window.showInformationMessage(
+        `Added "${node.finding.file}" to .aiignore to reduce AI agent token burn.`
       );
     }),
 

@@ -52,6 +52,14 @@ function printReport(report: AuditReport): void {
   if (stackTags.length > 0) {
     console.log(`${DIM}Detected Stack: ${stackTags.join(' · ')}${RESET}`);
   }
+  const tf = report.tokenFootprint;
+  const sinkSummary =
+    tf.tokenSinks.length > 0
+      ? `${YELLOW}${tf.tokenSinks.length} token sinks (~${tf.totalSinkTokens.toLocaleString('en-US')} tokens)${RESET}`
+      : `${DIM}0 unignored token sinks${RESET}`;
+  console.log(
+    `${DIM}Token Footprint: ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tokens/turn · ${RESET}${sinkSummary}`
+  );
   console.log('');
 
   for (const cat of report.categories) {

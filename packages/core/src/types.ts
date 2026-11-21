@@ -50,11 +50,23 @@ export interface AuditSummary {
   infos: number;
 }
 
+export interface TokenSink {
+  file: string;
+  estimatedTokens: number;
+}
+
+export interface TokenFootprint {
+  alwaysOnInstructionTokens: number;
+  tokenSinks: TokenSink[];
+  totalSinkTokens: number;
+}
+
 export interface AuditReport {
   rootDir: string;
   overallScore: number;
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
   detectedStack: DetectedStack;
+  tokenFootprint: TokenFootprint;
   categories: CategoryScore[];
   findings: Finding[];
   summary: AuditSummary;
@@ -71,6 +83,8 @@ export interface BoundaryRule {
 
 export interface ArchPilotConfig {
   maxFileLines: number;
+  maxInstructionTokens: number;
+  maxFileTokens: number;
   ignore: string[];
   boundaries: BoundaryRule[];
 }

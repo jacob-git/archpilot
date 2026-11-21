@@ -146,6 +146,41 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
             suggestion: 'Configure an explicit `timeout` on LLM clients to prevent hung requests/agents.',
           });
         }
+
+        // LLM API call missing max_tokens / max_output_tokens (prevents runaway output costs)
+        if (
+          hasAiLlm &&
+          /\.(?:chat\.completions|completions|messages|responses)\.create\s*\(/.test(line)
+        ) {
+          const callWindow = lines.slice(i, Math.min(lines.length, i + 12)).join('\n');
+          if (!/\b(?:max_tokens|max_completion_tokens|max_output_tokens|maxTokens|maxOutputTokens)\b/.test(callWindow)) {
+            findings.push({
+              id: 'llm-missing-max-tokens',
+              category: 'stack',
+              severity: 'warning',
+              file: file.relPath,
+              line: i + 1,
+              message: 'LLM API call has no explicit `max_tokens` / `max_output_tokens` cap.',
+              suggestion: 'Set an explicit token ceiling on LLM calls to prevent runaway generation costs.',
+            });
+          }
+
+          // LLM call inside a loop without batching/rate limiting
+          const prevWindow = lines.slice(Math.max(0, i - 8), i).join('\n');
+          if (
+            /\b(?:for|while)\s*\(|\bfor\s+\w+\s+in\b|\.(?:map|forEach)\s*\(/.test(prevWindow)
+          ) {
+            findings.push({
+              id: 'llm-call-in-loop',
+              category: 'stack',
+              severity: 'warning',
+              file: file.relPath,
+              line: i + 1,
+              message: 'LLM API call detected inside a loop — can cause unexpected token/cost spikes.',
+              suggestion: 'Batch items, enforce a concurrency/cost cap, or cache repeated prompts outside the loop.',
+            });
+          }
+        }
       }
     })
   );

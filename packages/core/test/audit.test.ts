@@ -175,3 +175,45 @@ test('detects Python, Go, Rust circular imports and AI/LLM guardrails', async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('detects token budget bloat, unignored token sinks, and LLM cost traps', async () => {
+  const hugeAgents = '# Agents\n' + 'Always follow clean architecture rules.\n'.repeat(350);
+  const hugeJson = JSON.stringify(
+    Array.from({ length: 1200 }, (_, i) => ({
+      id: i,
+      description: 'Large unignored fixture payload that wastes AI coding agent context tokens',
+    }))
+  );
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'AGENTS.md': hugeAgents,
+    'package.json': JSON.stringify({
+      name: 'llm-app',
+      dependencies: { openai: '^4.0.0' },
+      scripts: { test: 'echo ok' },
+    }),
+    'data/fixtures.json': hugeJson,
+    'src/worker.ts': [
+      'import OpenAI from "openai";',
+      'const client = new OpenAI();',
+      'export async function run(items: string[]) {',
+      '  for (const item of items) {',
+      '    await client.chat.completions.create({ model: "gpt-4o", messages: [{ role: "user", content: item }] });',
+      '  }',
+      '}',
+    ].join('\n'),
+    'src/worker.test.ts': 'export {};\n',
+  });
+
+  try {
+    const report = await auditRepository(dir);
+    assert.ok(report.tokenFootprint.alwaysOnInstructionTokens > 3000);
+    assert.ok(report.tokenFootprint.tokenSinks.some((s) => s.file === 'data/fixtures.json'));
+    assert.ok(report.findings.some((f) => f.id === 'instruction-token-budget'));
+    assert.ok(report.findings.some((f) => f.id === 'token-sink'));
+    assert.ok(report.findings.some((f) => f.id === 'llm-missing-max-tokens'));
+    assert.ok(report.findings.some((f) => f.id === 'llm-call-in-loop'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -19,4 +19,6 @@ export type {
   DetectedStack,
   Finding,
   Severity,
+  TokenFootprint,
+  TokenSink,
 } from './types.js';

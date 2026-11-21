@@ -91,7 +91,7 @@ export async function auditRepository(rootDir: string): Promise<AuditReport> {
     instructionFindings,
     boundaryFindings,
     stackFindings,
-    contextFindings,
+    contextResult,
     verifyFindings,
   ] = await Promise.all([
     runInstructionsCheck(ctx),
@@ -105,7 +105,7 @@ export async function auditRepository(rootDir: string): Promise<AuditReport> {
     instructions: instructionFindings,
     architecture: boundaryFindings,
     stack: stackFindings,
-    context: contextFindings,
+    context: contextResult.findings,
     verifiability: verifyFindings,
   };
 
@@ -130,6 +130,7 @@ export async function auditRepository(rootDir: string): Promise<AuditReport> {
     overallScore,
     grade: toGrade(overallScore),
     detectedStack,
+    tokenFootprint: contextResult.tokenFootprint,
     categories,
     findings,
     summary: {
