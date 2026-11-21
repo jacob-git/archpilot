@@ -1,5 +1,5 @@
 {
-  "name": "archpilot-vscode",
+  "name": "archpilot-studio",
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
   "version": "0.1.0",
