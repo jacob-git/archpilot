@@ -331,3 +331,33 @@ test('detects security vulnerabilities, exposed .env, secrets, and poisoned inst
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('detects dependency drift, unpinned deps, Next.js client->server leaks, and FastAPI sync-in-async', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'AGENTS.md': '# App\n',
+    'package.json': JSON.stringify({
+      name: 'monorepo',
+      dependencies: { next: '^15.0.0', react: '^18.2.0', lodash: 'latest' },
+      scripts: { test: 'echo ok' },
+    }),
+    'packages/web/package.json': JSON.stringify({
+      name: 'web',
+      dependencies: { react: '^19.0.0' },
+    }),
+    'packages/web/Button.tsx': "'use client';\nimport fs from 'node:fs';\nexport const B = () => fs;\n",
+    'pyproject.toml': '[project]\ndependencies = ["fastapi"]\n',
+    'api/routes.py': 'async def get_items():\n    return requests.get("https://example.com")\n',
+    'api/test_routes.py': 'def test_ok(): assert True\n',
+  });
+
+  try {
+    const report = await auditRepository(dir);
+    assert.ok(report.findings.some((f) => f.id === 'unpinned-dependency'));
+    assert.ok(report.findings.some((f) => f.id === 'dependency-version-conflict'));
+    assert.ok(report.findings.some((f) => f.id === 'client-imports-server'));
+    assert.ok(report.findings.some((f) => f.id === 'fastapi-sync-in-async'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -14,6 +14,7 @@ import {
   type Finding,
 } from '@archpilot/core';
 import { ArchPilotTreeProvider } from './treeProvider.js';
+import { ArchPilotCodeActionProvider } from './codeActions.js';
 import { openArchitectureGraph } from './graphView.js';
 import {
   estimateModelRateUsd,
@@ -234,6 +235,11 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar,
     fileTokenBar,
     vscode.window.registerTreeDataProvider('archpilot.auditView', treeProvider),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file' },
+      new ArchPilotCodeActionProvider(treeProvider),
+      { providedCodeActionKinds: ArchPilotCodeActionProvider.providedCodeActionKinds }
+    ),
     vscode.window.onDidChangeActiveTextEditor((editor) => updateActiveFileTokens(editor)),
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (vscode.window.activeTextEditor?.document === e.document) {

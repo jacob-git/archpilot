@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { CheckContext, Finding } from '../types.js';
 import { CODE_EXTENSIONS } from '../scanner.js';
 
@@ -189,6 +190,139 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
       message: 'Rust source files detected without a Cargo.toml manifest.',
       suggestion: 'Ensure a Cargo.toml exists at the workspace root.',
     });
+  }
+
+  // 5. Monorepo & Supply-Chain Dependency Health (conflicting major versions & unpinned `*`/`latest`)
+  const pkgFiles = ctx.files.filter((f) => path.posix.basename(f.relPath) === 'package.json');
+  if (pkgFiles.length > 0) {
+    const depMajors = new Map<string, Map<string, string>>();
+    for (const pf of pkgFiles.slice(0, 30)) {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(await readFile(pf.absPath, 'utf8')) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const allDeps = {
+        ...(typeof parsed.dependencies === 'object' && parsed.dependencies !== null
+          ? (parsed.dependencies as Record<string, unknown>)
+          : {}),
+        ...(typeof parsed.devDependencies === 'object' && parsed.devDependencies !== null
+          ? (parsed.devDependencies as Record<string, unknown>)
+          : {}),
+      };
+      for (const [dep, rawVer] of Object.entries(allDeps)) {
+        if (typeof rawVer !== 'string') continue;
+        const ver = rawVer.trim();
+        if (ver === '*' || ver.toLowerCase() === 'latest') {
+          findings.push({
+            id: 'unpinned-dependency',
+            category: 'stack',
+            severity: 'warning',
+            file: pf.relPath,
+            line: 1,
+            message: `Unpinned dependency \`${dep}: "${ver}"\` in ${pf.relPath} creates supply-chain & build-drift risk.`,
+            suggestion: `Pin \`${dep}\` to an explicit semver range (e.g., \`^1.2.3\`).`,
+          });
+          continue;
+        }
+        const majorMatch = /(\d+)\./.exec(ver);
+        if (majorMatch) {
+          const major = majorMatch[1];
+          const seen = depMajors.get(dep) ?? new Map<string, string>();
+          if (!seen.has(major)) seen.set(major, pf.relPath);
+          depMajors.set(dep, seen);
+        }
+      }
+    }
+
+    for (const [dep, majors] of depMajors.entries()) {
+      if (majors.size > 1) {
+        const details = Array.from(majors.entries())
+          .map(([m, file]) => `v${m} (${file})`)
+          .join(' vs ');
+        findings.push({
+          id: 'dependency-version-conflict',
+          category: 'stack',
+          severity: 'warning',
+          file: Array.from(majors.values())[0],
+          line: 1,
+          message: `Conflicting major versions of \`${dep}\` across workspace packages: ${details}.`,
+          suggestion: `Align \`${dep}\` to a single major version to prevent bundle duplication and runtime bugs.`,
+        });
+      }
+    }
+  }
+
+  // 6. Framework-specific deep checks (Next.js/React, FastAPI, Rust Web API)
+  const hasReactOrNext =
+    detectedStack.frameworks.includes('Next.js') || detectedStack.frameworks.includes('React');
+  if (hasReactOrNext) {
+    const uiFiles = ctx.files.filter(
+      (f) => (f.ext === '.tsx' || f.ext === '.jsx' || f.ext === '.ts' || f.ext === '.js') && f.sizeBytes <= 200_000
+    );
+    await Promise.all(
+      uiFiles.map(async (file) => {
+        let content: string;
+        try {
+          content = await readFile(file.absPath, 'utf8');
+        } catch {
+          return;
+        }
+        if (!/^\s*['"]use client['"]/.test(content)) return;
+        const lines = content.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          const m = /from\s+['"](node:fs|fs|prisma|@prisma\/client|pg|mysql2|mongoose|better-sqlite3|server-only)['"]/.exec(
+            lines[i]
+          );
+          if (m) {
+            findings.push({
+              id: 'client-imports-server',
+              category: 'stack',
+              severity: 'error',
+              file: file.relPath,
+              line: i + 1,
+              message: `Client component (\`'use client'\`) imports server/database module \`${m[1]}\`.`,
+              suggestion: 'Move database/filesystem access into a Server Component, Server Action, or API route.',
+            });
+          }
+        }
+      })
+    );
+  }
+
+  if (hasFastApi) {
+    const pyFiles = ctx.files.filter((f) => f.ext === '.py' && f.sizeBytes <= 200_000);
+    await Promise.all(
+      pyFiles.map(async (file) => {
+        let content: string;
+        try {
+          content = await readFile(file.absPath, 'utf8');
+        } catch {
+          return;
+        }
+        const lines = content.split(/\r?\n/);
+        let inAsyncDef = false;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (/^\s*async\s+def\s+/.test(line)) {
+            inAsyncDef = true;
+          } else if (/^\s*def\s+/.test(line)) {
+            inAsyncDef = false;
+          } else if (inAsyncDef && /\b(?:requests\.(?:get|post|put|delete|patch)|time\.sleep)\s*\(/.test(line)) {
+            findings.push({
+              id: 'fastapi-sync-in-async',
+              category: 'stack',
+              severity: 'warning',
+              file: file.relPath,
+              line: i + 1,
+              message: 'Blocking synchronous I/O (`requests.*` / `time.sleep`) inside an `async def` route blocks the event loop.',
+              suggestion: 'Use `httpx.AsyncClient` / `asyncio.sleep` or declare the route as synchronous `def`.',
+            });
+          }
+        }
+      })
+    );
   }
 
   return findings;
