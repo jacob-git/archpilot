@@ -1,6 +1,6 @@
 {
   "name": "@archpilot/core",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Deterministic architecture guardrails and AI-readiness auditing engine",
   "type": "module",
   "main": "./dist/src/index.js",
