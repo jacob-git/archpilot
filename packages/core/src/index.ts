@@ -1,4 +1,6 @@
 export { auditRepository } from './audit.js';
+export { analyzeBlastRadius } from './blastRadius.js';
+export type { BlastRadiusReport } from './blastRadius.js';
 export { buildModuleGraph } from './graph.js';
 export type { ModuleGraphData, ModuleGraphEdge, ModuleGraphNode } from './graph.js';
 export { loadConfig, DEFAULT_CONFIG } from './config.js';

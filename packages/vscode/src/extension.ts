@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { access, readFile, writeFile } from 'node:fs/promises';
 import {
+  analyzeBlastRadius,
   auditRepository,
   DEFAULT_CONFIG,
   generateAgentsMd,
@@ -249,6 +250,69 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!audit) return;
       const scoreLabel = `${audit.report.overallScore}/100 (Grade ${audit.report.grade})`;
       await openArchitectureGraph(audit.rootDir, scoreLabel);
+    }),
+
+    vscode.commands.registerCommand('archpilot.checkBlastRadius', async (node?: TreeNode) => {
+      const audit = await resolveAuditForNode(
+        node,
+        'Select project folder to check Git Diff & Blast Radius'
+      );
+      if (!audit) return;
+
+      const br = await analyzeBlastRadius(audit.rootDir);
+      if (br.changedFiles.length === 0) {
+        void vscode.window.showInformationMessage(
+          `No git changes detected in ${audit.name}.`
+        );
+        return;
+      }
+
+      interface ImpactItem extends vscode.QuickPickItem {
+        filePath?: string;
+      }
+
+      const items: ImpactItem[] = [
+        {
+          label: `$(flame) Risk: ${br.riskLevel.toUpperCase()} — ${br.changedFiles.length} changed · ${br.transitiveDependents.length} downstream impacted (${br.impactedModules.length} modules)`,
+          kind: vscode.QuickPickItemKind.Default,
+        },
+        { label: 'Changed Files', kind: vscode.QuickPickItemKind.Separator },
+        ...br.changedFiles.map((f) => ({
+          label: `$(edit) ${f}`,
+          description: 'changed',
+          filePath: f,
+        })),
+      ];
+
+      if (br.transitiveDependents.length > 0) {
+        items.push(
+          { label: 'Downstream Impacted Files', kind: vscode.QuickPickItemKind.Separator },
+          ...br.transitiveDependents.map((f) => ({
+            label: `$(arrow-right) ${f}`,
+            description: br.directDependents.includes(f) ? 'direct dependent' : 'transitive dependent',
+            filePath: f,
+          }))
+        );
+      }
+
+      if (br.diffFindings.length > 0) {
+        items.push(
+          { label: 'Guardrail Findings in Changed Files', kind: vscode.QuickPickItemKind.Separator },
+          ...br.diffFindings.map((f) => ({
+            label: `$(warning) [${f.id}] ${f.message}`,
+            description: f.file,
+            filePath: f.file,
+          }))
+        );
+      }
+
+      const picked = await vscode.window.showQuickPick(items, {
+        title: `ArchPilot Blast Radius — ${audit.name}`,
+        placeHolder: 'Select any changed or impacted file to open it',
+      });
+      if (picked?.filePath) {
+        await openFileInEditor(path.join(audit.rootDir, picked.filePath));
+      }
     }),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: TreeNode) => {

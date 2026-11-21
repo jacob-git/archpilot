@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  analyzeBlastRadius,
   auditRepository,
   formatMarkdown,
   formatSarif,
@@ -276,6 +277,27 @@ test('auto-generates tailored boundary rules from real repository folders', asyn
       parsed.boundaries.some((b) => b.from === 'src/ui' && b.disallow.includes('src/db')),
       'expected ui-no-direct-db rule'
     );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('computes direct and transitive blast radius for changed files', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'AGENTS.md': '# Agents\n',
+    'package.json': JSON.stringify({ name: 'br-test', scripts: { test: 'echo ok' } }),
+    'src/core/types.ts': 'export type Id = string;\n',
+    'src/service/user.ts': "import type { Id } from '../core/types.js';\nexport const getUser = (id: Id) => id;\n",
+    'src/ui/profile.ts': "import { getUser } from '../service/user.js';\nexport const Profile = () => getUser('1');\n",
+    'src/service/user.test.ts': 'export {};\n',
+  });
+
+  try {
+    const br = await analyzeBlastRadius(dir, ['src/core/types.ts']);
+    assert.deepEqual(br.directDependents, ['src/service/user.ts']);
+    assert.deepEqual(br.transitiveDependents, ['src/service/user.ts', 'src/ui/profile.ts']);
+    assert.equal(br.riskLevel, 'low');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

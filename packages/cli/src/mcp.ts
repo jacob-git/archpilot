@@ -1,6 +1,11 @@
 import { createInterface } from 'node:readline';
 import path from 'node:path';
-import { auditRepository, generateArchMap, generateFixPrompt } from '@archpilot/core';
+import {
+  analyzeBlastRadius,
+  auditRepository,
+  generateArchMap,
+  generateFixPrompt,
+} from '@archpilot/core';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -71,6 +76,25 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'check_diff',
+    description:
+      'Analyze git changed files (or an explicit file list) to report downstream blast radius, impacted modules, risk level, and findings in those files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional list of repo-relative file paths to analyze.',
+        },
+      },
+    },
+  },
 ];
 
 function send(msg: Record<string, unknown>): void {
@@ -136,6 +160,16 @@ async function handleToolCall(
     const map = await generateArchMap(repoPath);
     return {
       content: [{ type: 'text', text: map }],
+    };
+  }
+
+  if (name === 'check_diff') {
+    const files = Array.isArray(args.files)
+      ? args.files.filter((x): x is string => typeof x === 'string')
+      : undefined;
+    const br = await analyzeBlastRadius(repoPath, files);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(br, null, 2) }],
     };
   }
 

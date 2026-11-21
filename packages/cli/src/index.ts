@@ -2,6 +2,7 @@
 import { access, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  analyzeBlastRadius,
   auditRepository,
   formatMarkdown,
   formatSarif,
@@ -131,6 +132,7 @@ async function main(): Promise<void> {
   let format: 'text' | 'json' | 'sarif' | 'markdown' = 'text';
   let initMode = false;
   let mapMode = false;
+  let diffMode = false;
   let failUnder: number | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -146,6 +148,8 @@ async function main(): Promise<void> {
       initMode = true;
     } else if (arg === '--map') {
       mapMode = true;
+    } else if (arg === '--diff') {
+      diffMode = true;
     } else if (arg === '--fail-under') {
       const next = Number(args[++i]);
       if (!Number.isNaN(next)) failUnder = next;
@@ -158,8 +162,9 @@ Commands:
   mcp                          Start ArchPilot as an MCP stdio server for AI agents
 
 Options:
-  --init                       Generate starter AGENTS.md and archpilot.json
+  --init                       Generate starter AGENTS.md and smart archpilot.json
   --map                        Generate compact ARCHMAP.md repo index to save agent tokens
+  --diff                       Analyze git changed files and downstream blast radius
   --format <fmt>               Output format: text | json | sarif | markdown (default: text)
   --json                       Alias for --format json
   --fail-under <score>         Exit with code 1 if overall score is below <score>
@@ -181,6 +186,38 @@ Options:
     const mapPath = path.join(resolved, 'ARCHMAP.md');
     await writeFile(mapPath, mapContent, 'utf8');
     console.log(`${GREEN}Generated ARCHMAP.md (~${Math.ceil(mapContent.length / 4)} tokens)${RESET}`);
+    return;
+  }
+  if (diffMode) {
+    const br = await analyzeBlastRadius(resolved);
+    if (format === 'json') {
+      console.log(JSON.stringify(br, null, 2));
+    } else {
+      const riskColor = br.riskLevel === 'high' ? RED : br.riskLevel === 'medium' ? YELLOW : GREEN;
+      console.log('');
+      console.log(`${BOLD}ArchPilot Diff & Blast Radius${RESET}  ${DIM}${br.rootDir}${RESET}`);
+      console.log(
+        `Risk: ${riskColor}${BOLD}${br.riskLevel.toUpperCase()}${RESET} · ${br.changedFiles.length} changed · ${br.transitiveDependents.length} downstream impacted · ${br.impactedModules.length} modules`
+      );
+      if (br.changedFiles.length > 0) {
+        console.log(`\n${BOLD}Changed Files:${RESET}`);
+        for (const f of br.changedFiles.slice(0, 20)) console.log(`  • ${f}`);
+      }
+      if (br.transitiveDependents.length > 0) {
+        console.log(`\n${BOLD}Downstream Impacted Files:${RESET}`);
+        for (const f of br.transitiveDependents.slice(0, 20)) console.log(`  → ${f}`);
+      }
+      if (br.diffFindings.length > 0) {
+        console.log(`\n${BOLD}Findings in Changed Files:${RESET}`);
+        for (const f of br.diffFindings) {
+          console.log(`  ${severityTag(f.severity)} [${f.id}] ${DIM}${f.file ?? ''}${RESET} — ${f.message}`);
+        }
+      }
+      console.log('');
+    }
+    if (br.diffFindings.some((f) => f.severity === 'error')) {
+      process.exitCode = 1;
+    }
     return;
   }
 
