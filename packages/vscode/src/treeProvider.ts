@@ -4,6 +4,7 @@ import {
   findingContextValue,
   formatStackTags,
   formatTokenLine,
+  projectContextValue,
   type FolderAudit,
   type TreeNode,
 } from './types.js';
@@ -32,10 +33,7 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
       item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
       item.tooltip = `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\n${report.summary.filesScanned} files scanned in ${report.summary.durationMs}ms\nRight-click for actions`;
       item.iconPath = new vscode.ThemeIcon('folder');
-      const hasLargeFiles = report.tokenFootprint.tokenSinks.length > 0;
-      const baseCtx =
-        report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
-      item.contextValue = hasLargeFiles ? `${baseCtx}.tokenSavings` : baseCtx;
+      item.contextValue = projectContextValue(report);
       return item;
     }
 
@@ -51,10 +49,7 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
           ? `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nRight-click to Auto-Fix, Copy AI Fix Prompt, or Copy Badge`
           : `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nAll checks passed! Right-click to Copy README Badge`;
       item.iconPath = new vscode.ThemeIcon('shield');
-      const hasLargeFiles = report.tokenFootprint.tokenSinks.length > 0;
-      const baseCtx =
-        report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
-      item.contextValue = hasLargeFiles ? `${baseCtx}.tokenSavings` : baseCtx;
+      item.contextValue = projectContextValue(report);
       return item;
     }
 

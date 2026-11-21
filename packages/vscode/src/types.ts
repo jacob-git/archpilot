@@ -27,10 +27,36 @@ export const DETERMINISTIC_FIXABLE_RULES = new Set([
   'missing-gitignore',
 ]);
 
+const NON_IGNORABLE_FILES = new Set([
+  'package.json',
+  'tsconfig.json',
+  'tsconfig.base.json',
+  'AGENTS.md',
+  'CLAUDE.md',
+  'archpilot.json',
+]);
+
+export function projectContextValue(report: AuditReport): string {
+  const ids = new Set(report.findings.map((f) => f.id));
+  const tags = ['archpilot.project'];
+  if (report.findings.length > 0) tags.push('issues');
+  if (Array.from(ids).some((id) => DETERMINISTIC_FIXABLE_RULES.has(id))) tags.push('autofix');
+  if (ids.has('missing-agent-instructions')) tags.push('noAgents');
+  if (ids.has('no-boundary-rules')) tags.push('noConfig');
+  if (report.tokenFootprint.tokenSinks.length > 0) tags.push('sinks');
+  return tags.join('.');
+}
+
 export function findingContextValue(finding: Finding): string {
-  const fixable = DETERMINISTIC_FIXABLE_RULES.has(finding.id) ? '.fixable' : '';
-  const hasFile = finding.file ? '.file' : '';
-  return `archpilot.finding${fixable}${hasFile}`;
+  const tags = ['archpilot.finding'];
+  if (DETERMINISTIC_FIXABLE_RULES.has(finding.id)) tags.push('fixable');
+  if (finding.file && (finding.id === 'token-sink' || finding.id === 'oversized-file')) {
+    tags.push('bloat');
+  }
+  if (finding.file && !NON_IGNORABLE_FILES.has(finding.file)) {
+    tags.push('ignorable');
+  }
+  return tags.join('.');
 }
 
 export function formatStackTags(report: AuditReport): string {

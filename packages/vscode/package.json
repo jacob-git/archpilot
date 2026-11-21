@@ -162,57 +162,57 @@
       "view/item/context": [
         {
           "command": "archpilot.autoFixProject",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.autofix(\\b|$)/",
           "group": "1_fix@1"
         },
         {
           "command": "archpilot.copyFixPrompt",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
           "group": "1_fix@2"
         },
         {
           "command": "archpilot.generateAgentsMd",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.noAgents(\\b|$)/",
           "group": "2_generate@1"
         },
         {
           "command": "archpilot.initConfig",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.noConfig(\\b|$)/",
           "group": "2_generate@2"
         },
         {
-          "command": "archpilot.copyBadge",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\./",
-          "group": "3_share@1"
-        },
-        {
           "command": "archpilot.generateArchMap",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\./",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
           "group": "2_generate@3"
         },
         {
+          "command": "archpilot.copyBadge",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "3_share@1"
+        },
+        {
           "command": "archpilot.quickFixFinding",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding\\.fixable/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.fixable(\\b|$)/",
           "group": "1_fix@1"
         },
         {
           "command": "archpilot.copyFixPrompt",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding(\\b|$)/",
           "group": "1_fix@2"
         },
         {
           "command": "archpilot.ignoreFindingFile",
-          "when": "view == archpilot.auditView && viewItem =~ /\\.file$/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.ignorable(\\b|$)/",
           "group": "2_ignore@1"
         },
         {
           "command": "archpilot.addToAiIgnore",
-          "when": "view == archpilot.auditView && viewItem =~ /\\.file$/",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.bloat(\\b|$)/",
           "group": "2_ignore@2"
         },
         {
           "command": "archpilot.optimizeTokenCost",
-          "when": "view == archpilot.auditView && (viewItem == archpilot.tokenCost.hasSavings || viewItem =~ /\\.tokenSavings$/)",
+          "when": "view == archpilot.auditView && (viewItem == archpilot.tokenCost.hasSavings || viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/)",
           "group": "1_fix@3"
         },
         {
