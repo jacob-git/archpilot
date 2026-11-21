@@ -13,6 +13,7 @@ import {
   type Finding,
 } from '@archpilot/core';
 import { ArchPilotTreeProvider } from './treeProvider.js';
+import { openArchitectureGraph } from './graphView.js';
 import {
   estimateModelRateUsd,
   getDetectedChatModels,
@@ -239,6 +240,16 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand('archpilot.refresh', runAudit),
+
+    vscode.commands.registerCommand('archpilot.openGraph', async (node?: TreeNode) => {
+      const audit = await resolveAuditForNode(
+        node,
+        'Select project folder to open Architecture Graph'
+      );
+      if (!audit) return;
+      const scoreLabel = `${audit.report.overallScore}/100 (Grade ${audit.report.grade})`;
+      await openArchitectureGraph(audit.rootDir, scoreLabel);
+    }),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: TreeNode) => {
       const rootDir =

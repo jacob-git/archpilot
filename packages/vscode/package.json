@@ -139,27 +139,42 @@
         "command": "archpilot.generateArchMap",
         "title": "Generate ARCHMAP.md (Compact Repo Map)",
         "icon": "$(map)"
+      },
+      {
+        "command": "archpilot.openGraph",
+        "title": "ArchPilot: Open Architecture Graph",
+        "icon": "$(type-hierarchy)"
       }
     ],
     "menus": {
       "view/title": [
         {
+          "command": "archpilot.openGraph",
+          "when": "view == archpilot.auditView",
+          "group": "navigation@1"
+        },
+        {
           "command": "archpilot.refresh",
           "when": "view == archpilot.auditView",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "archpilot.generateAgentsMd",
           "when": "view == archpilot.auditView",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "archpilot.initConfig",
           "when": "view == archpilot.auditView",
-          "group": "navigation"
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
+        {
+          "command": "archpilot.openGraph",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "0_view@1"
+        },
         {
           "command": "archpilot.autoFixProject",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.autofix(\\b|$)/",

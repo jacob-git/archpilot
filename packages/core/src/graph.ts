@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ScannedFile } from './types.js';
-import { toPosix } from './scanner.js';
+import type { BoundaryRule, ScannedFile } from './types.js';
+import { CODE_EXTENSIONS, scanWorkspace, toPosix } from './scanner.js';
+import { loadConfig } from './config.js';
 
 const TS_JS_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
@@ -325,4 +326,164 @@ export function detectCycles(edges: ImportEdge[]): string[][] {
   }
 
   return cycles;
+}
+
+export interface ModuleGraphNode {
+  id: string;
+  label: string;
+  fileCount: number;
+  estimatedTokens: number;
+  inDegree: number;
+  outDegree: number;
+  inCycle: boolean;
+  hasViolation: boolean;
+  sampleFiles: string[];
+}
+
+export interface ModuleGraphEdge {
+  from: string;
+  to: string;
+  weight: number;
+  isCycle: boolean;
+  isViolation: boolean;
+}
+
+export interface ModuleGraphData {
+  rootDir: string;
+  repoName: string;
+  nodes: ModuleGraphNode[];
+  edges: ModuleGraphEdge[];
+  cycles: string[][];
+}
+
+function moduleGroupForFile(relPath: string): string {
+  const parts = relPath.split('/');
+  if (parts.length >= 3) {
+    return `${parts[0]}/${parts[1]}`;
+  }
+  if (parts.length === 2) {
+    return parts[0];
+  }
+  return '(root)';
+}
+
+function matchesPrefix(target: string, pattern: string): boolean {
+  const normalized = pattern.replace(/^\.\//, '').replace(/\/\*$/, '').replace(/\/$/, '');
+  return target === normalized || target.startsWith(`${normalized}/`);
+}
+
+function isBoundaryViolation(
+  edge: ImportEdge,
+  rules: BoundaryRule[]
+): boolean {
+  for (const rule of rules) {
+    if (!matchesPrefix(edge.from, rule.from)) continue;
+    for (const disallowed of rule.disallow) {
+      const hitResolved = edge.resolved ? matchesPrefix(edge.resolved, disallowed) : false;
+      const hitSpec =
+        edge.specifier === disallowed || edge.specifier.startsWith(`${disallowed}/`);
+      if (hitResolved || hitSpec) return true;
+    }
+  }
+  return false;
+}
+
+export async function buildModuleGraph(rootDir: string): Promise<ModuleGraphData> {
+  const resolvedRoot = path.resolve(rootDir);
+  const { config } = await loadConfig(resolvedRoot);
+  const files = await scanWorkspace(resolvedRoot, config.ignore);
+  const fileSet = new Set(files.map((f) => f.relPath));
+  const codeFiles = files.filter((f) => CODE_EXTENSIONS.has(f.ext));
+
+  const edges = await buildImportGraph(files, fileSet);
+  const cycles = detectCycles(edges);
+
+  const cycleFiles = new Set<string>();
+  const cycleFilePairs = new Set<string>();
+  for (const cycle of cycles) {
+    for (let i = 0; i < cycle.length - 1; i++) {
+      cycleFiles.add(cycle[i]);
+      cycleFilePairs.add(`${cycle[i]}->${cycle[i + 1]}`);
+    }
+  }
+
+  const nodeMap = new Map<string, ModuleGraphNode>();
+  for (const f of codeFiles) {
+    const modId = moduleGroupForFile(f.relPath);
+    let node = nodeMap.get(modId);
+    if (!node) {
+      node = {
+        id: modId,
+        label: modId,
+        fileCount: 0,
+        estimatedTokens: 0,
+        inDegree: 0,
+        outDegree: 0,
+        inCycle: false,
+        hasViolation: false,
+        sampleFiles: [],
+      };
+      nodeMap.set(modId, node);
+    }
+    node.fileCount += 1;
+    node.estimatedTokens += Math.ceil(f.sizeBytes / 4);
+    if (cycleFiles.has(f.relPath)) node.inCycle = true;
+    if (node.sampleFiles.length < 8) {
+      node.sampleFiles.push(f.relPath);
+    }
+  }
+
+  const edgeMap = new Map<string, ModuleGraphEdge>();
+  for (const edge of edges) {
+    if (!edge.resolved) continue;
+    const fromMod = moduleGroupForFile(edge.from);
+    const toMod = moduleGroupForFile(edge.resolved);
+    if (fromMod === toMod) continue;
+
+    const key = `${fromMod}->${toMod}`;
+    const isViolation = isBoundaryViolation(edge, config.boundaries);
+    const isCycle = cycleFilePairs.has(`${edge.from}->${edge.resolved}`);
+
+    let modEdge = edgeMap.get(key);
+    if (!modEdge) {
+      modEdge = {
+        from: fromMod,
+        to: toMod,
+        weight: 0,
+        isCycle: false,
+        isViolation: false,
+      };
+      edgeMap.set(key, modEdge);
+    }
+    modEdge.weight += 1;
+    if (isCycle) modEdge.isCycle = true;
+    if (isViolation) {
+      modEdge.isViolation = true;
+      const fromNode = nodeMap.get(fromMod);
+      if (fromNode) fromNode.hasViolation = true;
+    }
+  }
+
+  const modEdges = Array.from(edgeMap.values());
+  for (const e of modEdges) {
+    const fromNode = nodeMap.get(e.from);
+    const toNode = nodeMap.get(e.to);
+    if (fromNode) fromNode.outDegree += 1;
+    if (toNode) toNode.inDegree += 1;
+  }
+
+  // Cap to top 30 modules by file count so huge monorepos stay crisp
+  const sortedNodes = Array.from(nodeMap.values())
+    .sort((a, b) => b.fileCount - a.fileCount)
+    .slice(0, 30);
+  const keptIds = new Set(sortedNodes.map((n) => n.id));
+  const filteredEdges = modEdges.filter((e) => keptIds.has(e.from) && keptIds.has(e.to));
+
+  return {
+    rootDir: resolvedRoot,
+    repoName: path.basename(resolvedRoot),
+    nodes: sortedNodes,
+    edges: filteredEdges,
+    cycles,
+  };
 }
