@@ -2,13 +2,6 @@ import { readFile } from 'node:fs/promises';
 import type { CheckContext, Finding } from '../types.js';
 import { CODE_EXTENSIONS } from '../scanner.js';
 
-const SECRET_PATTERNS: Array<{ name: string; re: RegExp }> = [
-  { name: 'OpenAI API key', re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}\b/ },
-  { name: 'Anthropic API key', re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/ },
-  { name: 'Google API key', re: /\bAIza[0-9A-Za-z_-]{30,}\b/ },
-  { name: 'Groq API key', re: /\bgsk_[A-Za-z0-9]{24,}\b/ },
-];
-
 const API_CONTRACT_RE =
   /(?:^|\/)(?:openapi|swagger).*\.(?:ya?ml|json)$|\.(?:graphql|gql|proto)$/i;
 
@@ -96,94 +89,76 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
     );
   }
 
-  // 3. Multi-language security & AI/LLM SDK guardrails
-  const codeFiles = ctx.files.filter((f) => CODE_EXTENSIONS.has(f.ext));
-  await Promise.all(
-    codeFiles.map(async (file) => {
-      if (file.sizeBytes > 250_000) return;
-      let content: string;
-      try {
-        content = await readFile(file.absPath, 'utf8');
-      } catch {
-        return;
-      }
-      const lines = content.split(/\r?\n/);
+  // 3. AI/LLM SDK reliability & cost guardrails
+  if (hasAiLlm) {
+    const codeFiles = ctx.files.filter((f) => CODE_EXTENSIONS.has(f.ext));
+    await Promise.all(
+      codeFiles.map(async (file) => {
+        if (file.sizeBytes > 250_000) return;
+        let content: string;
+        try {
+          content = await readFile(file.absPath, 'utf8');
+        } catch {
+          return;
+        }
+        const lines = content.split(/\r?\n/);
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
 
-        // Hardcoded AI / cloud API keys (skip obvious test/example placeholders)
-        if (!/example|placeholder|your[-_]|dummy|fake|test/i.test(line)) {
-          for (const secret of SECRET_PATTERNS) {
-            if (secret.re.test(line)) {
+          // LLM client instantiation without timeout (TS/JS & Python)
+          if (
+            /\b(?:new\s+)?(?:OpenAI|Anthropic)\s*\(\s*(?:\{[^}]*\}|\s*)\)/.test(line) &&
+            !/timeout/i.test(line)
+          ) {
+            findings.push({
+              id: 'llm-missing-timeout',
+              category: 'stack',
+              severity: 'info',
+              file: file.relPath,
+              line: i + 1,
+              message: 'LLM client instantiated without an explicit timeout.',
+              suggestion: 'Configure an explicit `timeout` on LLM clients to prevent hung requests/agents.',
+            });
+          }
+
+          // LLM API call missing max_tokens / max_output_tokens (prevents runaway output costs)
+          if (
+            /\.(?:chat\.completions|completions|messages|responses)\.create\s*\(/.test(line)
+          ) {
+            const callWindow = lines.slice(i, Math.min(lines.length, i + 12)).join('\n');
+            if (!/\b(?:max_tokens|max_completion_tokens|max_output_tokens|maxTokens|maxOutputTokens)\b/.test(callWindow)) {
               findings.push({
-                id: 'hardcoded-api-key',
+                id: 'llm-missing-max-tokens',
                 category: 'stack',
-                severity: 'error',
+                severity: 'warning',
                 file: file.relPath,
                 line: i + 1,
-                message: `Possible hardcoded ${secret.name} detected in source code.`,
-                suggestion: 'Move secrets to environment variables and rotate any exposed key immediately.',
+                message: 'LLM API call has no explicit `max_tokens` / `max_output_tokens` cap.',
+                suggestion: 'Set an explicit token ceiling on LLM calls to prevent runaway generation costs.',
               });
-              break;
+            }
+
+            // LLM call inside a loop without batching/rate limiting
+            const prevWindow = lines.slice(Math.max(0, i - 8), i).join('\n');
+            if (
+              /\b(?:for|while)\s*\(|\bfor\s+\w+\s+in\b|\.(?:map|forEach)\s*\(/.test(prevWindow)
+            ) {
+              findings.push({
+                id: 'llm-call-in-loop',
+                category: 'stack',
+                severity: 'warning',
+                file: file.relPath,
+                line: i + 1,
+                message: 'LLM API call detected inside a loop — can cause unexpected token/cost spikes.',
+                suggestion: 'Batch items, enforce a concurrency/cost cap, or cache repeated prompts outside the loop.',
+              });
             }
           }
         }
-
-        // LLM client instantiation without timeout (TS/JS & Python)
-        if (
-          hasAiLlm &&
-          /\b(?:new\s+)?(?:OpenAI|Anthropic)\s*\(\s*(?:\{[^}]*\}|\s*)\)/.test(line) &&
-          !/timeout/i.test(line)
-        ) {
-          findings.push({
-            id: 'llm-missing-timeout',
-            category: 'stack',
-            severity: 'info',
-            file: file.relPath,
-            line: i + 1,
-            message: 'LLM client instantiated without an explicit timeout.',
-            suggestion: 'Configure an explicit `timeout` on LLM clients to prevent hung requests/agents.',
-          });
-        }
-
-        // LLM API call missing max_tokens / max_output_tokens (prevents runaway output costs)
-        if (
-          hasAiLlm &&
-          /\.(?:chat\.completions|completions|messages|responses)\.create\s*\(/.test(line)
-        ) {
-          const callWindow = lines.slice(i, Math.min(lines.length, i + 12)).join('\n');
-          if (!/\b(?:max_tokens|max_completion_tokens|max_output_tokens|maxTokens|maxOutputTokens)\b/.test(callWindow)) {
-            findings.push({
-              id: 'llm-missing-max-tokens',
-              category: 'stack',
-              severity: 'warning',
-              file: file.relPath,
-              line: i + 1,
-              message: 'LLM API call has no explicit `max_tokens` / `max_output_tokens` cap.',
-              suggestion: 'Set an explicit token ceiling on LLM calls to prevent runaway generation costs.',
-            });
-          }
-
-          // LLM call inside a loop without batching/rate limiting
-          const prevWindow = lines.slice(Math.max(0, i - 8), i).join('\n');
-          if (
-            /\b(?:for|while)\s*\(|\bfor\s+\w+\s+in\b|\.(?:map|forEach)\s*\(/.test(prevWindow)
-          ) {
-            findings.push({
-              id: 'llm-call-in-loop',
-              category: 'stack',
-              severity: 'warning',
-              file: file.relPath,
-              line: i + 1,
-              message: 'LLM API call detected inside a loop — can cause unexpected token/cost spikes.',
-              suggestion: 'Batch items, enforce a concurrency/cost cap, or cache repeated prompts outside the loop.',
-            });
-          }
-        }
-      }
-    })
-  );
+      })
+    );
+  }
 
   // 4. Python / Go / Rust manifest & hygiene checks
   if (detectedStack.languages.includes('python') && !ctx.fileSet.has('pyproject.toml')) {

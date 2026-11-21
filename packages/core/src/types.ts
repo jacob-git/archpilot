@@ -3,9 +3,10 @@ export type Severity = 'error' | 'warning' | 'info';
 export type CategoryId =
   | 'instructions'
   | 'architecture'
+  | 'security'
+  | 'stack'
   | 'context'
-  | 'verifiability'
-  | 'stack';
+  | 'verifiability';
 
 export type DetectedLanguage =
   | 'typescript'

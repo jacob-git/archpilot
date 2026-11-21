@@ -16,13 +16,15 @@ import { runBoundariesCheck } from './checks/boundaries.js';
 import { runContextBloatCheck } from './checks/contextBloat.js';
 import { runVerifiabilityCheck } from './checks/verifiability.js';
 import { runStackPacksCheck } from './checks/stackPacks.js';
+import { runSecurityCheck } from './checks/security.js';
 
 const CATEGORY_META: Array<{ id: CategoryId; label: string; weight: number }> = [
-  { id: 'instructions', label: 'Agent Instructions', weight: 0.2 },
-  { id: 'architecture', label: 'Architecture & Boundaries', weight: 0.3 },
-  { id: 'stack', label: 'Stack & API Guardrails', weight: 0.2 },
+  { id: 'instructions', label: 'Agent Instructions', weight: 0.15 },
+  { id: 'architecture', label: 'Architecture & Boundaries', weight: 0.25 },
+  { id: 'security', label: 'Security Guardrails', weight: 0.2 },
+  { id: 'stack', label: 'Stack & API Guardrails', weight: 0.15 },
   { id: 'context', label: 'Context Hygiene', weight: 0.1 },
-  { id: 'verifiability', label: 'Verifiability & Contracts', weight: 0.2 },
+  { id: 'verifiability', label: 'Verifiability & Contracts', weight: 0.15 },
 ];
 
 function scoreFindings(findings: Finding[]): number {
@@ -94,12 +96,14 @@ export async function auditRepository(
   const [
     instructionFindings,
     boundaryFindings,
+    securityFindings,
     stackFindings,
     contextResult,
     verifyFindings,
   ] = await Promise.all([
     runInstructionsCheck(ctx),
     runBoundariesCheck(ctx, hasConfigFile),
+    runSecurityCheck(ctx),
     runStackPacksCheck(ctx),
     runContextBloatCheck(ctx, options),
     runVerifiabilityCheck(ctx),
@@ -108,6 +112,7 @@ export async function auditRepository(
   const byCategory: Record<CategoryId, Finding[]> = {
     instructions: instructionFindings,
     architecture: boundaryFindings,
+    security: securityFindings,
     stack: stackFindings,
     context: contextResult.findings,
     verifiability: verifyFindings,

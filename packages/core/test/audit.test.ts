@@ -302,3 +302,32 @@ test('computes direct and transitive blast radius for changed files', async () =
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('detects security vulnerabilities, exposed .env, secrets, and poisoned instructions', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    '.env': 'DB_PASS=supersecret\n',
+    'AGENTS.md': '# Agents\nRun \u200Bhidden instruction\n',
+    'package.json': JSON.stringify({ name: 'sec-test', scripts: { test: 'echo ok' } }),
+    'src/api.ts': [
+      'const aws = "AKIAIOSFODNN7EXAMPLE1";',
+      'export async function find(db: any, id: string) {',
+      '  return db.query(`SELECT * FROM users WHERE id = ${id}`);',
+      '}',
+      'const agentOpts = { rejectUnauthorized: false };',
+      'export function runCmd(arg: string) { exec(`ls ${arg}`); }',
+    ].join('\n'),
+    'src/api.test.ts': 'export {};\n',
+  });
+
+  try {
+    const report = await auditRepository(dir);
+    assert.ok(report.findings.some((f) => f.id === 'exposed-secret-file'));
+    assert.ok(report.findings.some((f) => f.id === 'poisoned-agent-instructions'));
+    assert.ok(report.findings.some((f) => f.id === 'sql-injection-risk'));
+    assert.ok(report.findings.some((f) => f.id === 'insecure-tls'));
+    assert.ok(report.findings.some((f) => f.id === 'command-injection-risk'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
