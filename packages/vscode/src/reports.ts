@@ -32,7 +32,7 @@ export async function showBlastRadiusPicker(audit: FolderAudit): Promise<void> {
 
   const items: ImpactItem[] = [
     {
-      label: `$(flame) Risk: ${br.riskLevel.toUpperCase()} — ${br.changedFiles.length} changed · ${br.transitiveDependents.length} downstream · ${br.untestedImpactedFiles.length} untested`,
+      label: `$(flame) Risk: ${br.riskLevel.toUpperCase()} (${br.changedFiles.length} changed, ${br.transitiveDependents.length} downstream, ${br.untestedImpactedFiles.length} untested)`,
       kind: vscode.QuickPickItemKind.Default,
     },
   ];
@@ -99,7 +99,7 @@ export async function showBlastRadiusPicker(audit: FolderAudit): Promise<void> {
   }
 
   const picked = await vscode.window.showQuickPick(items, {
-    title: `ArchPilot Blast Radius & QA Test Gaps — ${audit.name}`,
+    title: `ArchPilot Blast Radius & QA Test Gaps: ${audit.name}`,
     placeHolder: 'Select any file to open, or generate missing tests with AI Chat',
   });
 
@@ -157,7 +157,7 @@ export async function generateAndCopyPrBrief(audit: FolderAudit): Promise<void> 
   await vscode.env.clipboard.writeText(brief);
 
   const action = await vscode.window.showInformationMessage(
-    `Copied PR & QA Handoff Brief for ${audit.name} to clipboard — ready to paste into GitHub, GitLab, Bitbucket, or Jira.`,
+    `Copied PR & QA Handoff Brief for ${audit.name}. Ready to paste into GitHub, GitLab, Bitbucket, or Jira.`,
     'Open Preview'
   );
   if (action === 'Open Preview') {
@@ -202,7 +202,7 @@ export async function runDependencyAuditPicker(audit: FolderAudit): Promise<void
 
   const items: VulnItem[] = [
     {
-      label: `$(shield) ${report.counts.total} CVEs — ${report.counts.critical} Critical · ${report.counts.high} High · ${report.counts.moderate} Moderate · ${report.counts.low} Low`,
+      label: `$(shield) ${report.counts.total} CVEs (${report.counts.critical} Critical, ${report.counts.high} High, ${report.counts.moderate} Moderate, ${report.counts.low} Low)`,
       description: report.usedPublicFallback ? 'via public registry.npmjs.org fallback' : report.registryUsed ?? 'default registry',
     },
   ];
@@ -239,7 +239,7 @@ export async function runDependencyAuditPicker(audit: FolderAudit): Promise<void
   }
 
   const picked = await vscode.window.showQuickPick(items, {
-    title: `ArchPilot Dependency CVE Audit — ${audit.name}`,
+    title: `ArchPilot Dependency CVE Audit: ${audit.name}`,
     placeHolder: 'Choose a remediation action or click a CVE to open its advisory',
   });
 

@@ -51,7 +51,8 @@ async function pickWorkspaceFolder(placeHolder: string): Promise<string | undefi
 }
 
 function rootDirFromNode(node?: TreeNode): string | undefined {
-  return node?.audit.rootDir;
+  if (!node || node.kind === 'loading') return undefined;
+  return node.audit.rootDir;
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -178,23 +179,49 @@ export function activate(context: vscode.ExtensionContext): void {
       const inputPerMillionUsd = cfg.get<number>('costPerMillionInputTokens', 3);
       const modelLabel = cfg.get<string>('modelPresetLabel', `Standard ($${inputPerMillionUsd}/1M)`);
 
-      const audits: FolderAudit[] = await Promise.all(
-        folders.map(async (folder) => ({
-          name: folder.name,
-          rootDir: folder.uri.fsPath,
-          report: await auditRepository(folder.uri.fsPath, {
+      const total = folders.length;
+      statusBar.text = `$(loading~spin) ArchPilot: Scanning${total > 1 ? ` (0/${total})` : '...'}`;
+      statusBar.tooltip = `Scanning ${total} workspace ${total === 1 ? 'folder' : 'folders'}...`;
+      statusBar.show();
+
+      if (treeProvider.getAudits().length === 0) {
+        treeProvider.setLoading(
+          total === 1
+            ? `Scanning ${folders[0].name}...`
+            : `Scanning 0/${total} repositories...`
+        );
+      }
+
+      let completed = 0;
+      const orderedAudits: Array<FolderAudit | undefined> = new Array(total);
+
+      await Promise.all(
+        folders.map(async (folder, idx) => {
+          const report = await auditRepository(folder.uri.fsPath, {
             inputPerMillionUsd,
             modelLabel,
-          }),
-        }))
+          });
+          orderedAudits[idx] = {
+            name: folder.name,
+            rootDir: folder.uri.fsPath,
+            report,
+          };
+          completed += 1;
+          if (total > 1 && completed < total) {
+            const ready = orderedAudits.filter((a): a is FolderAudit => Boolean(a));
+            statusBar.text = `$(loading~spin) ArchPilot: Scanning (${completed}/${total})`;
+            treeProvider.setAudits(ready, `Scanning ${completed}/${total} repositories...`);
+          }
+        })
       );
 
+      const audits = orderedAudits.filter((a): a is FolderAudit => Boolean(a));
       treeProvider.setAudits(audits);
 
       if (audits.length === 1) {
         const r = audits[0].report;
         statusBar.text = `$(shield) ArchPilot: ${r.overallScore}/100`;
-        statusBar.tooltip = `${audits[0].name}: Grade ${r.grade} (${r.summary.errors} errors, ${r.summary.warnings} warnings) — Click to refresh`;
+        statusBar.tooltip = `${audits[0].name}: Grade ${r.grade} (${r.summary.errors} errors, ${r.summary.warnings} warnings). Click to refresh.`;
       } else {
         const minScore = Math.min(...audits.map((a) => a.report.overallScore));
         statusBar.text = `$(shield) ArchPilot: ${minScore}/100 (${audits.length} repos)`;
@@ -253,7 +280,7 @@ export function activate(context: vscode.ExtensionContext): void {
     node?: TreeNode,
     placeHolder = 'Select project folder'
   ): Promise<FolderAudit | undefined> => {
-    if (node) return node.audit;
+    if (node && node.kind !== 'loading') return node.audit;
     const audits = treeProvider.getAudits();
     if (audits.length === 1) return audits[0];
     const dir = await pickWorkspaceFolder(placeHolder);
@@ -667,13 +694,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
       if (addedCount > 0 && !hasBloatedInstructions) {
         void vscode.window.showInformationMessage(
-          `Added ${addedCount} large file${addedCount > 1 ? 's' : ''} to .aiignore & .cursorignore — estimated savings ~$${savedEstimate.toFixed(2)}/mo/dev!`
+          `Added ${addedCount} large file${addedCount > 1 ? 's' : ''} to .aiignore & .cursorignore (est. savings ~$${savedEstimate.toFixed(2)}/mo/dev).`
         );
       } else if (hasBloatedInstructions) {
         const msg =
           addedCount > 0
-            ? `Added ${addedCount} large files to .aiignore & .cursorignore. Your always-on instructions are still ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn — copy a prompt to compress them?`
-            : `Your always-on instructions are ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn (~$${tf.costEstimate.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev). Copy a prompt to compress them by 50%?`;
+            ? `Added ${addedCount} large files to .aiignore & .cursorignore. Always-on instructions are still ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn. Copy a compression prompt?`
+            : `Always-on instructions are ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn (~$${tf.costEstimate.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev). Copy a prompt to compress them by 50%?`;
         const choice = await vscode.window.showInformationMessage(msg, 'Copy Compression Prompt');
         if (choice === 'Copy Compression Prompt') {
           await vscode.env.clipboard.writeText(
@@ -708,7 +735,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!audit) return;
       await vscode.env.clipboard.writeText(generateFixPrompt(audit.report));
       void vscode.window.showInformationMessage(
-        `Copied AI Fix Prompt for ${audit.name} to clipboard — paste into Copilot, Cursor, or Claude.`
+        `Copied fix prompt for ${audit.name} to clipboard.`
       );
     }),
 

@@ -30,7 +30,7 @@ function renderWebviewHtml(diagram: ArchitectureDiagramData, scoreLabel: string)
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ArchPilot Graph — ${escapeHtml(data.repoName)}</title>
+<title>ArchPilot Graph: ${escapeHtml(data.repoName)}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -554,7 +554,7 @@ export async function openArchitectureGraph(
         const mermaid = generateMermaidDiagram(latestDiagram);
         await vscode.env.clipboard.writeText(mermaid);
         void vscode.window.showInformationMessage(
-          'Copied Mermaid architecture diagram to clipboard — paste into GitHub, GitLab, Notion, or Confluence.'
+          'Copied Mermaid architecture diagram to clipboard.'
         );
       } else if (msg.type === 'exportMd') {
         const md = await generateArchitectureMd(rootDir);

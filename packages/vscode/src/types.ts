@@ -8,6 +8,7 @@ export interface FolderAudit {
 }
 
 export type TreeNode =
+  | { kind: 'loading'; message: string }
   | { kind: 'folder'; audit: FolderAudit }
   | { kind: 'summary'; audit: FolderAudit }
   | { kind: 'tokenCost'; audit: FolderAudit }

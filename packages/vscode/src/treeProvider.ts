@@ -13,9 +13,16 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   private audits: FolderAudit[] = [];
+  private loadingMessage?: string;
 
-  setAudits(audits: FolderAudit[]): void {
+  setLoading(message?: string): void {
+    this.loadingMessage = message;
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  setAudits(audits: FolderAudit[], loadingMessage?: string): void {
     this.audits = audits;
+    this.loadingMessage = loadingMessage;
     this._onDidChangeTreeData.fire(undefined);
   }
 
@@ -24,10 +31,16 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
   }
 
   getTreeItem(node: TreeNode): vscode.TreeItem {
+    if (node.kind === 'loading') {
+      const item = new vscode.TreeItem(node.message, vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('loading~spin');
+      return item;
+    }
+
     if (node.kind === 'folder') {
       const { name, report } = node.audit;
       const item = new vscode.TreeItem(
-        `${name} — ${report.overallScore}/100 (Grade ${report.grade})`,
+        `${name} (${report.overallScore}/100, Grade ${report.grade})`,
         vscode.TreeItemCollapsibleState.Expanded
       );
       item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
@@ -123,7 +136,7 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
       );
       item.contextValue = hasFindings ? 'archpilot.category.issues' : 'archpilot.category.clean';
       if (hasFindings) {
-        item.tooltip = `${node.category.label}: ${node.category.findings.length} finding(s) — Right-click to Fix with AI Chat or Copy Fix Prompt`;
+        item.tooltip = `${node.category.label}: ${node.category.findings.length} finding(s). Right-click for fix options.`;
       }
       return item;
     }
@@ -171,12 +184,15 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
   }
 
   getChildren(element?: TreeNode): TreeNode[] {
-    if (this.audits.length === 0) {
-      return [];
-    }
-
     if (!element) {
-      if (this.audits.length === 1) {
+      const top: TreeNode[] = [];
+      if (this.loadingMessage) {
+        top.push({ kind: 'loading', message: this.loadingMessage });
+      }
+      if (this.audits.length === 0) {
+        return top;
+      }
+      if (this.audits.length === 1 && !this.loadingMessage) {
         const single = this.audits[0];
         return [
           { kind: 'summary', audit: single },
@@ -190,7 +206,7 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
           ),
         ];
       }
-      return this.audits.map((audit): TreeNode => ({ kind: 'folder', audit }));
+      return [...top, ...this.audits.map((audit): TreeNode => ({ kind: 'folder', audit }))];
     }
 
     if (element.kind === 'folder') {
