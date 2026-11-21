@@ -1,0 +1,18 @@
+{
+  "maxFileLines": 800,
+  "ignore": ["node_modules", "dist", "coverage"],
+  "boundaries": [
+    {
+      "name": "core-purity",
+      "from": "packages/core",
+      "disallow": ["vscode", "packages/cli", "packages/vscode"],
+      "message": "@archpilot/core must stay independent of VS Code and CLI wrappers."
+    },
+    {
+      "name": "cli-no-vscode",
+      "from": "packages/cli",
+      "disallow": ["vscode", "packages/vscode"],
+      "message": "CLI package must not depend on VS Code APIs."
+    }
+  ]
+}

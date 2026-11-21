@@ -1,0 +1,22 @@
+{
+  "name": "archpilot",
+  "version": "0.1.0",
+  "description": "Executable architecture guardrails and AI-readiness auditor for coding agents",
+  "type": "module",
+  "bin": {
+    "archpilot": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@archpilot/core": "0.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jacob-git/archpilot.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT"
+}

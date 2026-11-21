@@ -1,0 +1,21 @@
+name: ArchPilot Architecture & AI-Readiness Audit
+description: Enforce executable architecture boundaries and AI-readiness guardrails in CI.
+inputs:
+  path:
+    description: Repository path to audit
+    required: false
+    default: "."
+  fail-under:
+    description: Minimum score required to pass (0-100)
+    required: false
+    default: "70"
+  format:
+    description: Output format (text | json | sarif | markdown)
+    required: false
+    default: "text"
+runs:
+  using: composite
+  steps:
+    - name: Run ArchPilot
+      shell: bash
+      run: npx --yes archpilot "${{ inputs.path }}" --format "${{ inputs.format }}" --fail-under "${{ inputs.fail-under }}"

@@ -1,0 +1,178 @@
+{
+  "name": "archpilot-vscode",
+  "displayName": "ArchPilot",
+  "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
+  "version": "0.1.0",
+  "publisher": "archpilot",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jacob-git/archpilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jacob-git/archpilot/issues"
+  },
+  "homepage": "https://github.com/jacob-git/archpilot#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "agents.md",
+    "ai-ready",
+    "architecture",
+    "guardrails",
+    "boundaries",
+    "cursor",
+    "claude",
+    "mcp"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "archpilot",
+          "title": "ArchPilot",
+          "icon": "media/archpilot.svg"
+        }
+      ]
+    },
+    "views": {
+      "archpilot": [
+        {
+          "id": "archpilot.auditView",
+          "name": "Audit Report"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "archpilot.auditView",
+        "contents": "Open a workspace folder to run ArchPilot architecture and AI-readiness checks.\n[Refresh Audit](command:archpilot.refresh)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "archpilot.refresh",
+        "title": "ArchPilot: Refresh Audit",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "archpilot.generateAgentsMd",
+        "title": "ArchPilot: Generate AGENTS.md",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "archpilot.initConfig",
+        "title": "ArchPilot: Initialize archpilot.json",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "archpilot.autoFixProject",
+        "title": "Auto-Fix Deterministic Issues",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "archpilot.copyFixPrompt",
+        "title": "Copy Fix Prompt for AI Agent",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "archpilot.copyBadge",
+        "title": "Copy README Badge",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "archpilot.quickFixFinding",
+        "title": "Quick Fix",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "archpilot.ignoreFindingFile",
+        "title": "Ignore File in archpilot.json",
+        "icon": "$(eye-closed)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "archpilot.refresh",
+          "when": "view == archpilot.auditView",
+          "group": "navigation"
+        },
+        {
+          "command": "archpilot.generateAgentsMd",
+          "when": "view == archpilot.auditView",
+          "group": "navigation"
+        },
+        {
+          "command": "archpilot.initConfig",
+          "when": "view == archpilot.auditView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "archpilot.autoFixProject",
+          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "group": "1_fix@1"
+        },
+        {
+          "command": "archpilot.copyFixPrompt",
+          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "group": "1_fix@2"
+        },
+        {
+          "command": "archpilot.generateAgentsMd",
+          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "group": "2_generate@1"
+        },
+        {
+          "command": "archpilot.initConfig",
+          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "group": "2_generate@2"
+        },
+        {
+          "command": "archpilot.copyBadge",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\./",
+          "group": "3_share@1"
+        },
+        {
+          "command": "archpilot.quickFixFinding",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding\\.fixable/",
+          "group": "1_fix@1"
+        },
+        {
+          "command": "archpilot.copyFixPrompt",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding/",
+          "group": "1_fix@2"
+        },
+        {
+          "command": "archpilot.ignoreFindingFile",
+          "when": "view == archpilot.auditView && viewItem =~ /\\.file$/",
+          "group": "2_ignore@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "package": "npm run build && npx --yes @vscode/vsce package --no-dependencies",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@archpilot/core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.2"
+  }
+}
