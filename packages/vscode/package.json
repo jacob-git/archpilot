@@ -235,6 +235,14 @@
       ],
       "archpilot.explorerMenu": [
         {
+          "command": "archpilot.autoFixProject",
+          "group": "0_fix@1"
+        },
+        {
+          "command": "archpilot.fixWithAiChat",
+          "group": "0_fix@2"
+        },
+        {
           "command": "archpilot.openGraph",
           "group": "1_primary@1"
         },
@@ -243,36 +251,16 @@
           "group": "1_primary@2"
         },
         {
-          "command": "archpilot.autoFixProject",
-          "group": "2_fix@1"
+          "submenu": "archpilot.audit",
+          "group": "2_groups@1"
         },
         {
-          "command": "archpilot.fixWithAiChat",
-          "group": "2_fix@2"
+          "submenu": "archpilot.optimize",
+          "group": "2_groups@2"
         },
         {
-          "command": "archpilot.optimizeTokenCost",
-          "group": "2_fix@3"
-        },
-        {
-          "command": "archpilot.checkBlastRadius",
-          "group": "3_audit@1"
-        },
-        {
-          "command": "archpilot.auditDependencies",
-          "group": "3_audit@2"
-        },
-        {
-          "command": "archpilot.generatePrBrief",
-          "group": "3_audit@3"
-        },
-        {
-          "command": "archpilot.generateArchitectureMd",
-          "group": "4_export@1"
-        },
-        {
-          "command": "archpilot.exportHtmlReport",
-          "group": "4_export@2"
+          "submenu": "archpilot.generateExport",
+          "group": "2_groups@3"
         }
       ],
       "view/title": [
@@ -397,66 +385,66 @@
       "archpilot.audit": [
         {
           "command": "archpilot.checkBlastRadius",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_audit@1"
         },
         {
           "command": "archpilot.auditDependencies",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_audit@2"
         },
         {
           "command": "archpilot.generatePrBrief",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_audit@3"
         }
       ],
       "archpilot.optimize": [
         {
           "command": "archpilot.optimizeTokenCost",
-          "when": "viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_optimize@1"
         },
         {
           "command": "archpilot.copyFixPrompt",
-          "when": "viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_optimize@2"
         },
         {
           "command": "archpilot.selectModelPreset",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "2_pricing@1"
         }
       ],
       "archpilot.generateExport": [
         {
           "command": "archpilot.generateAgentsMd",
-          "when": "viewItem =~ /^archpilot\\.project.*\\.noAgents(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.noAgents(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_setup@1"
         },
         {
           "command": "archpilot.initConfig",
-          "when": "viewItem =~ /^archpilot\\.project.*\\.noConfig(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.noConfig(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_setup@2"
         },
         {
           "command": "archpilot.generateArchitectureMd",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "2_docs@1"
         },
         {
           "command": "archpilot.generateArchMap",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "2_docs@2"
         },
         {
           "command": "archpilot.exportHtmlReport",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "3_share@1"
         },
         {
           "command": "archpilot.copyBadge",
-          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "3_share@2"
         }
       ]
