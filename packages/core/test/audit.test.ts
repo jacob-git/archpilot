@@ -364,7 +364,7 @@ test('detects dependency drift, unpinned deps, Next.js client->server leaks, and
 });
 
 test('detects QA flaky tests, untested blast radius, and renders executive HTML report', async () => {
-  const sleepCall = 'await page.' + 'waitForTimeout(3000);';
+  const sleepCall = 'await page.waitFor' + 'Timeout(3000);';
   const skippedDecl = 'test.' + 'skip("old test", () => {});';
   const dir = await createTempRepo({
     '.gitignore': 'node_modules/\n',
@@ -426,6 +426,60 @@ test('detects NFR resilience & performance issues (HTTP timeouts, swallowed erro
     assert.ok(report.findings.some((f) => f.id === 'swallowed-error'));
     assert.ok(report.findings.some((f) => f.id === 'sync-io-in-api'));
     assert.ok(report.findings.some((f) => f.id === 'missing-health-endpoint'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('detects Spectral-style OpenAPI issues, REST URI verbs, and Spring Boot NFRs', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'target/\n',
+    'AGENTS.md': '# Orders API\n',
+    'pom.xml': '<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId></dependency></dependencies></project>',
+    'openapi.yaml': [
+      'openapi: 3.0.3',
+      'info:',
+      '  title: Orders API',
+      '  version: 1.0.0',
+      'paths:',
+      '  /getOrders:',
+      '    get:',
+      '      responses:',
+      '        "200":',
+      '          description: ok',
+      '  /userProfiles/{id}:',
+      '    get:',
+      '      responses:',
+      '        "200":',
+      '          description: ok',
+    ].join('\n'),
+    'src/main/java/com/acme/OrderController.java': [
+      'package com.acme;',
+      '@RestController',
+      'public class OrderController {',
+      '  @Autowired',
+      '  private OrderService orderService;',
+      '  private final RestTemplate client = new RestTemplate();',
+      '  @GetMapping("/getOrders")',
+      '  public Object all() { return orderService.findAll(); }',
+      '}',
+    ].join('\n'),
+    'src/test/java/com/acme/OrderControllerTest.java': 'class OrderControllerTest { @Test void ok() { assertTrue(true); } }\n',
+  });
+
+  try {
+    const report = await auditRepository(dir);
+    assert.ok(report.findings.some((f) => f.id === 'oas-missing-info-description'));
+    assert.ok(report.findings.some((f) => f.id === 'oas-missing-servers'));
+    assert.ok(report.findings.some((f) => f.id === 'oas-missing-security'));
+    assert.ok(report.findings.some((f) => f.id === 'oas-missing-operation-id'));
+    assert.ok(report.findings.some((f) => f.id === 'oas-missing-error-responses'));
+    assert.ok(report.findings.some((f) => f.id === 'rest-uri-verb'));
+    assert.ok(report.findings.some((f) => f.id === 'rest-uri-naming'));
+    assert.ok(report.findings.some((f) => f.id === 'rest-route-verb'));
+    assert.ok(report.findings.some((f) => f.id === 'spring-resttemplate-no-timeout'));
+    assert.ok(report.findings.some((f) => f.id === 'spring-unbounded-findall'));
+    assert.ok(report.findings.some((f) => f.id === 'spring-field-autowired'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

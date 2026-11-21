@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CheckContext, Finding } from '../types.js';
 import { CODE_EXTENSIONS } from '../scanner.js';
+import { runRestApiBestPracticesCheck } from './restApi.js';
 
 const API_CONTRACT_RE =
   /(?:^|\/)(?:openapi|swagger).*\.(?:ya?ml|json)$|\.(?:graphql|gql|proto)$/i;
@@ -443,6 +444,9 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
       });
     }
   }
+
+  const restFindings = await runRestApiBestPracticesCheck(ctx);
+  findings.push(...restFindings);
 
   return findings;
 }
