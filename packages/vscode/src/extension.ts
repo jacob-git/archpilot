@@ -486,6 +486,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (node && node.kind === 'finding') {
         prompt = generateFixPrompt(node.audit.report, node.finding);
         label = `[${node.finding.id}]`;
+      } else if (node && node.kind === 'category') {
+        const scopedReport = { ...node.audit.report, findings: node.category.findings };
+        prompt = generateFixPrompt(scopedReport);
+        label = node.category.label;
       } else {
         const audit = await resolveAuditForNode(node, 'Select project folder to fix with AI Chat');
         if (!audit) return;
@@ -666,6 +670,14 @@ export function activate(context: vscode.ExtensionContext): void {
         await vscode.env.clipboard.writeText(generateFixPrompt(node.audit.report, node.finding));
         void vscode.window.showInformationMessage(
           `Copied AI Fix Prompt for [${node.finding.id}] to clipboard.`
+        );
+        return;
+      }
+      if (node && node.kind === 'category') {
+        const scopedReport = { ...node.audit.report, findings: node.category.findings };
+        await vscode.env.clipboard.writeText(generateFixPrompt(scopedReport));
+        void vscode.window.showInformationMessage(
+          `Copied AI Fix Prompt for ${node.category.label} (${node.category.findings.length} finding${node.category.findings.length > 1 ? 's' : ''}) to clipboard.`
         );
         return;
       }

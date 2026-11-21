@@ -121,6 +121,10 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
           ? new vscode.ThemeColor('problemsWarningIcon.foreground')
           : new vscode.ThemeColor('testing.iconPassed')
       );
+      item.contextValue = hasFindings ? 'archpilot.category.issues' : 'archpilot.category.clean';
+      if (hasFindings) {
+        item.tooltip = `${node.category.label}: ${node.category.findings.length} finding(s) — Right-click to Fix with AI Chat or Copy Fix Prompt`;
+      }
       return item;
     }
 

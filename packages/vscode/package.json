@@ -226,6 +226,16 @@
           "group": "3_share@1"
         },
         {
+          "command": "archpilot.fixWithAiChat",
+          "when": "view == archpilot.auditView && viewItem == archpilot.category.issues",
+          "group": "1_fix@1"
+        },
+        {
+          "command": "archpilot.copyFixPrompt",
+          "when": "view == archpilot.auditView && viewItem == archpilot.category.issues",
+          "group": "1_fix@2"
+        },
+        {
           "command": "archpilot.quickFixFinding",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.fixable(\\b|$)/",
           "group": "1_fix@1"
