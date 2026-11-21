@@ -1,6 +1,6 @@
 {
   "name": "archpilot",
-  "version": "0.5.0",
+  "version": "0.4.0",
   "description": "Executable architecture guardrails and AI-readiness auditor for coding agents",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archpilot/core": "0.5.0"
+    "@archpilot/core": "0.4.0"
   },
   "repository": {
     "type": "git",
