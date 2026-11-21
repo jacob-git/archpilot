@@ -32,10 +32,10 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
       item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
       item.tooltip = `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\n${report.summary.filesScanned} files scanned in ${report.summary.durationMs}ms\nRight-click for actions`;
       item.iconPath = new vscode.ThemeIcon('folder');
-      const hasTokenSavings = report.tokenFootprint.costEstimate.potentialMonthlySavingsUsd > 0;
+      const hasLargeFiles = report.tokenFootprint.tokenSinks.length > 0;
       const baseCtx =
         report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
-      item.contextValue = hasTokenSavings ? `${baseCtx}.tokenSavings` : baseCtx;
+      item.contextValue = hasLargeFiles ? `${baseCtx}.tokenSavings` : baseCtx;
       return item;
     }
 
@@ -51,10 +51,10 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
           ? `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nRight-click to Auto-Fix, Copy AI Fix Prompt, or Copy Badge`
           : `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nAll checks passed! Right-click to Copy README Badge`;
       item.iconPath = new vscode.ThemeIcon('shield');
-      const hasTokenSavings = report.tokenFootprint.costEstimate.potentialMonthlySavingsUsd > 0;
+      const hasLargeFiles = report.tokenFootprint.tokenSinks.length > 0;
       const baseCtx =
         report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
-      item.contextValue = hasTokenSavings ? `${baseCtx}.tokenSavings` : baseCtx;
+      item.contextValue = hasLargeFiles ? `${baseCtx}.tokenSavings` : baseCtx;
       return item;
     }
 
@@ -63,10 +63,13 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
       const tf = report.tokenFootprint;
       const c = tf.costEstimate;
       const totalMonthly = c.alwaysOnMonthlyUsd + c.sinkMonthlyRiskUsd;
+      const hasLargeFiles = tf.tokenSinks.length > 0;
       const hasSavings = c.potentialMonthlySavingsUsd > 0;
-      const label = hasSavings
+      const label = hasLargeFiles
         ? `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev (Save ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo)`
-        : `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev · Optimized`;
+        : hasSavings
+          ? `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev (Trim Instructions)`
+          : `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev · Optimized`;
 
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
       item.description = `~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tok/turn · ${c.modelLabel}`;
@@ -76,7 +79,9 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
           ? new vscode.ThemeColor('problemsWarningIcon.foreground')
           : new vscode.ThemeColor('testing.iconPassed')
       );
-      item.contextValue = hasSavings ? 'archpilot.tokenCost.hasSavings' : 'archpilot.tokenCost.clean';
+      item.contextValue = hasLargeFiles
+        ? 'archpilot.tokenCost.hasSavings'
+        : 'archpilot.tokenCost.clean';
       item.command = {
         command: 'archpilot.selectModelPreset',
         title: 'Select Model Pricing Preset',
