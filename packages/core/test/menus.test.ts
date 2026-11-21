@@ -49,13 +49,31 @@ test('VS Code sidebar project menu and File Explorer ArchPilot submenu stay in s
   for (const submenuId of sharedSubmenus) {
     const entries = menus[submenuId] ?? [];
     assert.ok(entries.length > 0, `Shared submenu "${submenuId}" must not be empty`);
+
+    // Group entries by slot so mutually exclusive sidebar/explorer variants (e.g. Generate vs Update AGENTS.md) stay in sync
+    const slots = new Map<string, MenuEntry[]>();
     for (const entry of entries) {
-      if (entry.when) {
-        assert.ok(
-          entry.when.includes('explorerResourceIsRoot'),
-          `Menu entry "${entry.command ?? entry.submenu}" in "${submenuId}" must include "explorerResourceIsRoot" in its "when" clause`
-        );
-      }
+      const slotKey = entry.group ?? (entry.command ?? entry.submenu ?? 'default');
+      const list = slots.get(slotKey) ?? [];
+      list.push(entry);
+      slots.set(slotKey, list);
+    }
+
+    for (const [slotKey, slotEntries] of slots.entries()) {
+      const visibleInExplorer = slotEntries.some(
+        (e) => !e.when || e.when.includes('explorerResourceIsRoot')
+      );
+      const visibleInSidebar = slotEntries.some(
+        (e) => !e.when || e.when.includes('archpilot\\.project')
+      );
+      assert.ok(
+        visibleInExplorer,
+        `Slot "${slotKey}" in "${submenuId}" must have an entry visible in File Explorer (explorerResourceIsRoot)`
+      );
+      assert.ok(
+        visibleInSidebar,
+        `Slot "${slotKey}" in "${submenuId}" must have an entry visible in the ArchPilot sidebar`
+      );
     }
   }
 });

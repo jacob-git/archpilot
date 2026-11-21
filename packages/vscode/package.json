@@ -104,6 +104,18 @@
         "icon": "$(new-file)"
       },
       {
+        "command": "archpilot.updateAgentsMd",
+        "title": "Update AGENTS.md",
+        "category": "ArchPilot",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "archpilot.manageAgentsMd",
+        "title": "Generate / Update AGENTS.md",
+        "category": "ArchPilot",
+        "icon": "$(new-file)"
+      },
+      {
         "command": "archpilot.initConfig",
         "title": "Initialize archpilot.json",
         "category": "ArchPilot",
@@ -439,7 +451,17 @@
       "archpilot.generateExport": [
         {
           "command": "archpilot.generateAgentsMd",
-          "when": "viewItem =~ /^archpilot\\.project.*\\.noAgents(\\b|$)/ || explorerResourceIsRoot",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.noAgents(\\b|$)/",
+          "group": "1_setup@1"
+        },
+        {
+          "command": "archpilot.updateAgentsMd",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.hasAgents(\\b|$)/",
+          "group": "1_setup@1"
+        },
+        {
+          "command": "archpilot.manageAgentsMd",
+          "when": "explorerResourceIsRoot",
           "group": "1_setup@1"
         },
         {

@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { access, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import {
   analyzeBlastRadius,
   analyzeMigration,
   formatHtmlReport,
+  generateAgentsMd,
   generateMigrationPlanMd,
   generateMigrationWavePrompt,
   generatePrHandoffBrief,
@@ -13,7 +14,7 @@ import {
   type MigrationPlaybookId,
   type MigrationRuleConfig,
 } from '@archpilot/core';
-import type { FolderAudit } from './types.js';
+import { estimateModelRateUsd, getDetectedChatModels, type FolderAudit } from './types.js';
 
 async function fileExists(p: string): Promise<boolean> {
   try {
@@ -455,4 +456,146 @@ export async function showMigrationPlanner(audit: FolderAudit): Promise<void> {
       }
     }
   }
+}
+
+export async function generateOrUpdateAgentsMd(rootDir: string): Promise<boolean> {
+  const target = path.join(rootDir, 'AGENTS.md');
+  const freshContent = await generateAgentsMd(rootDir);
+
+  if (!(await fileExists(target))) {
+    await writeFile(target, freshContent, 'utf8');
+    const doc = await vscode.workspace.openTextDocument(target);
+    await vscode.window.showTextDocument(doc);
+    return true;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    [
+      {
+        label: '$(comment-discussion) Update with AI Chat (Preserve Custom Rules)',
+        description: 'Recommended',
+        detail: 'Merges newly detected stack, scripts, and structure into your existing AGENTS.md',
+        action: 'aiMerge' as const,
+      },
+      {
+        label: '$(refresh) Replace with Fresh Generated AGENTS.md',
+        detail: 'Overwrites AGENTS.md with a clean template scanned from the current repo',
+        action: 'replace' as const,
+      },
+      {
+        label: '$(go-to-file) Open Current AGENTS.md',
+        detail: 'Review or edit the existing file manually',
+        action: 'open' as const,
+      },
+    ],
+    {
+      title: `AGENTS.md already exists in ${path.basename(rootDir)}`,
+      placeHolder: 'Choose how to update AGENTS.md',
+    }
+  );
+  if (!picked) return false;
+
+  if (picked.action === 'open') {
+    const doc = await vscode.workspace.openTextDocument(target);
+    await vscode.window.showTextDocument(doc);
+    return false;
+  }
+
+  if (picked.action === 'replace') {
+    await writeFile(target, freshContent, 'utf8');
+    const doc = await vscode.workspace.openTextDocument(target);
+    await vscode.window.showTextDocument(doc);
+    void vscode.window.showInformationMessage('Replaced AGENTS.md with a freshly generated template.');
+    return true;
+  }
+
+  const existing = await readFile(target, 'utf8');
+  const prompt = [
+    `Please update \`AGENTS.md\` in **${path.basename(rootDir)}** so it reflects the current repository structure, scripts, and stack while preserving all custom team rules and conventions.`,
+    '',
+    'Keep the updated file concise (under 2,500 tokens) and remove any stale file paths or dead npm scripts.',
+    '',
+    '### Freshly detected repository overview:',
+    '```markdown',
+    freshContent.trim(),
+    '```',
+    '',
+    '### Current AGENTS.md:',
+    '```markdown',
+    existing.slice(0, 6000).trim(),
+    '```',
+  ].join('\n');
+
+  try {
+    await vscode.commands.executeCommand('workbench.action.chat.open', { query: prompt });
+  } catch {
+    await vscode.env.clipboard.writeText(prompt);
+    void vscode.window.showInformationMessage('Copied AGENTS.md update prompt to clipboard.');
+  }
+  return false;
+}
+
+export async function selectModelPresetPicker(): Promise<boolean> {
+  interface PricingPickItem extends vscode.QuickPickItem {
+    rate: number;
+    short: string;
+  }
+
+  const items: PricingPickItem[] = [];
+  const liveModels = await getDetectedChatModels();
+  const seen = new Set<string>();
+
+  if (liveModels.length > 0) {
+    items.push({
+      label: 'Detected in VS Code / Copilot',
+      kind: vscode.QuickPickItemKind.Separator,
+      rate: 0,
+      short: '',
+    });
+    for (const m of liveModels) {
+      const displayName = m.name || m.family || m.id;
+      const key = displayName.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const rate = estimateModelRateUsd(`${m.id} ${m.name ?? ''} ${m.family ?? ''}`);
+      items.push({
+        label: displayName,
+        description: `~$${rate}/1M input${m.vendor ? ` · ${m.vendor}` : ''}`,
+        rate,
+        short: `${displayName} ($${rate}/1M)`,
+      });
+    }
+  }
+
+  items.push(
+    { label: 'General Pricing Tiers', kind: vscode.QuickPickItemKind.Separator, rate: 0, short: '' },
+    { label: 'Fast / Flash / Mini', description: '$0.30/1M input (Gemini Flash, GPT-4o-mini, o4-mini)', rate: 0.3, short: 'Fast ($0.30/1M)' },
+    { label: 'Standard / Sonnet / GPT-4o', description: '$3/1M input (Claude Sonnet, GPT-4o, GPT-4.1)', rate: 3, short: 'Standard ($3/1M)' },
+    { label: 'High-Reasoning / GPT-5+ / o3', description: '$5/1M input (GPT-5, GPT-6, o3)', rate: 5, short: 'Reasoning ($5/1M)' },
+    { label: 'Frontier / Opus', description: '$15/1M input (Claude Opus)', rate: 15, short: 'Frontier ($15/1M)' },
+    { label: 'Custom rate...', description: 'Enter any exact $ per 1M input token price', rate: -1, short: 'Custom' }
+  );
+
+  const picked = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Select a detected Copilot/VS Code model or pricing tier',
+  });
+  if (!picked || picked.kind === vscode.QuickPickItemKind.Separator) return false;
+
+  let rate = picked.rate;
+  let shortLabel = picked.short;
+  if (rate < 0) {
+    const raw = await vscode.window.showInputBox({
+      prompt: 'Enter input token cost in USD per 1M tokens (e.g., 2.5)',
+      value: '3',
+      validateInput: (v) => (Number(v) > 0 ? undefined : 'Enter a positive number'),
+    });
+    if (!raw) return false;
+    rate = Number(raw);
+    shortLabel = `Custom ($${rate}/1M)`;
+  }
+
+  const cfg = vscode.workspace.getConfiguration('archpilot');
+  await cfg.update('costPerMillionInputTokens', rate, vscode.ConfigurationTarget.Global);
+  await cfg.update('modelPresetLabel', shortLabel, vscode.ConfigurationTarget.Global);
+  return true;
 }

@@ -45,7 +45,11 @@ export function projectContextValue(report: AuditReport): string {
   const tags = ['archpilot.project'];
   if (report.findings.length > 0) tags.push('issues');
   if (Array.from(ids).some((id) => DETERMINISTIC_FIXABLE_RULES.has(id))) tags.push('autofix');
-  if (ids.has('missing-agent-instructions')) tags.push('noAgents');
+  if (ids.has('missing-agent-instructions')) {
+    tags.push('noAgents');
+  } else {
+    tags.push('hasAgents');
+  }
   if (ids.has('no-boundary-rules')) tags.push('noConfig');
   if (report.tokenFootprint.tokenSinks.length > 0) tags.push('sinks');
   return tags.join('.');

@@ -19,16 +19,13 @@ import { openArchitectureGraph } from './graphView.js';
 import {
   exportExecutiveHtmlReport,
   generateAndCopyPrBrief,
+  generateOrUpdateAgentsMd,
   runDependencyAuditPicker,
+  selectModelPresetPicker,
   showBlastRadiusPicker,
   showMigrationPlanner,
 } from './reports.js';
-import {
-  estimateModelRateUsd,
-  getDetectedChatModels,
-  type FolderAudit,
-  type TreeNode,
-} from './types.js';
+import type { FolderAudit, TreeNode } from './types.js';
 
 function toVsCodeSeverity(sev: Finding['severity']): vscode.DiagnosticSeverity {
   if (sev === 'error') return vscode.DiagnosticSeverity.Error;
@@ -51,19 +48,39 @@ async function pickWorkspaceFolder(placeHolder: string): Promise<string | undefi
   return picked?.fsPath;
 }
 
-type CommandTarget = TreeNode | vscode.Uri;
+interface UriLike {
+  fsPath: string;
+  scheme?: string;
+}
 
-function isTreeNode(arg?: CommandTarget): arg is TreeNode {
-  return Boolean(arg && !(arg instanceof vscode.Uri));
+type CommandTarget = TreeNode | vscode.Uri | UriLike;
+
+function isUriLike(arg: unknown): arg is UriLike {
+  return (
+    typeof arg === 'object' &&
+    arg !== null &&
+    'fsPath' in arg &&
+    typeof (arg as { fsPath: unknown }).fsPath === 'string'
+  );
+}
+
+function isTreeNode(arg: unknown): arg is TreeNode {
+  return (
+    typeof arg === 'object' &&
+    arg !== null &&
+    'kind' in arg &&
+    typeof (arg as { kind: unknown }).kind === 'string'
+  );
 }
 
 function rootDirFromNode(arg?: CommandTarget): string | undefined {
   if (!arg) return undefined;
-  if (arg instanceof vscode.Uri) {
-    return vscode.workspace.getWorkspaceFolder(arg)?.uri.fsPath ?? arg.fsPath;
+  if (isUriLike(arg)) {
+    const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(arg.fsPath));
+    return folder?.uri.fsPath ?? arg.fsPath;
   }
-  if (arg.kind === 'loading') return undefined;
-  return arg.audit.rootDir;
+  if (isTreeNode(arg) && arg.kind !== 'loading') return arg.audit.rootDir;
+  return undefined;
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -319,13 +336,32 @@ export function activate(context: vscode.ExtensionContext): void {
   ): Promise<FolderAudit | undefined> => {
     if (isTreeNode(arg) && arg.kind !== 'loading') return arg.audit;
     const audits = treeProvider.getAudits();
-    if (arg instanceof vscode.Uri) {
-      const dir = vscode.workspace.getWorkspaceFolder(arg)?.uri.fsPath ?? arg.fsPath;
-      return audits.find((a) => a.rootDir === dir);
+    let dir: string | undefined;
+    if (isUriLike(arg)) {
+      const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(arg.fsPath));
+      dir = folder?.uri.fsPath ?? arg.fsPath;
+    } else if (audits.length === 1) {
+      return audits[0];
+    } else {
+      dir = await pickWorkspaceFolder(placeHolder);
     }
-    if (audits.length === 1) return audits[0];
-    const dir = await pickWorkspaceFolder(placeHolder);
-    return audits.find((a) => a.rootDir === dir);
+    if (!dir) return undefined;
+    const normalized = path.resolve(dir);
+    const cached = audits.find((a) => path.resolve(a.rootDir) === normalized);
+    if (cached) return cached;
+
+    const cfg = vscode.workspace.getConfiguration('archpilot');
+    const inputPerMillionUsd = cfg.get<number>('costPerMillionInputTokens', 3);
+    const modelLabel = cfg.get<string>('modelPresetLabel', `Standard ($${inputPerMillionUsd}/1M)`);
+    const report = await auditRepository(normalized, { inputPerMillionUsd, modelLabel });
+    return { name: path.basename(normalized), rootDir: normalized, report };
+  };
+
+  const handleAgentsMd = async (node?: CommandTarget): Promise<void> => {
+    const rootDir =
+      rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for AGENTS.md'));
+    if (!rootDir) return;
+    if (await generateOrUpdateAgentsMd(rootDir)) await runAudit();
   };
 
   context.subscriptions.push(
@@ -378,18 +414,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (audit) await showMigrationPlanner(audit);
     }),
 
-    vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: CommandTarget) => {
-      const rootDir = rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for AGENTS.md'));
-      if (!rootDir) return;
-      const target = path.join(rootDir, 'AGENTS.md');
-      if (await exists(target)) {
-        void vscode.window.showInformationMessage('AGENTS.md already exists in this folder.');
-        return;
-      }
-      await writeFile(target, await generateAgentsMd(rootDir), 'utf8');
-      await openFileInEditor(target);
-      await runAudit();
-    }),
+    vscode.commands.registerCommand('archpilot.generateAgentsMd', handleAgentsMd),
+    vscode.commands.registerCommand('archpilot.updateAgentsMd', handleAgentsMd),
+    vscode.commands.registerCommand('archpilot.manageAgentsMd', handleAgentsMd),
 
     vscode.commands.registerCommand('archpilot.initConfig', async (node?: CommandTarget) => {
       const rootDir = rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for archpilot.json'));
@@ -596,99 +623,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand('archpilot.selectModelPreset', async () => {
-      interface PricingPickItem extends vscode.QuickPickItem {
-        rate: number;
-        short: string;
+      if (await selectModelPresetPicker()) {
+        updateActiveFileTokens(vscode.window.activeTextEditor);
+        await runAudit();
       }
-
-      const items: PricingPickItem[] = [];
-      const liveModels = await getDetectedChatModels();
-      const seen = new Set<string>();
-
-      if (liveModels.length > 0) {
-        items.push({
-          label: 'Detected in VS Code / Copilot',
-          kind: vscode.QuickPickItemKind.Separator,
-          rate: 0,
-          short: '',
-        });
-        for (const m of liveModels) {
-          const displayName = m.name || m.family || m.id;
-          const key = displayName.toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const rate = estimateModelRateUsd(`${m.id} ${m.name ?? ''} ${m.family ?? ''}`);
-          items.push({
-            label: displayName,
-            description: `~$${rate}/1M input${m.vendor ? ` · ${m.vendor}` : ''}`,
-            rate,
-            short: `${displayName} ($${rate}/1M)`,
-          });
-        }
-      }
-
-      items.push(
-        {
-          label: 'General Pricing Tiers',
-          kind: vscode.QuickPickItemKind.Separator,
-          rate: 0,
-          short: '',
-        },
-        {
-          label: 'Fast / Flash / Mini',
-          description: '$0.30/1M input (Gemini Flash, GPT-4o-mini, o4-mini)',
-          rate: 0.3,
-          short: 'Fast ($0.30/1M)',
-        },
-        {
-          label: 'Standard / Sonnet / GPT-4o',
-          description: '$3/1M input (Claude Sonnet, GPT-4o, GPT-4.1)',
-          rate: 3,
-          short: 'Standard ($3/1M)',
-        },
-        {
-          label: 'High-Reasoning / GPT-5+ / o3',
-          description: '$5/1M input (GPT-5, GPT-6, o3)',
-          rate: 5,
-          short: 'Reasoning ($5/1M)',
-        },
-        {
-          label: 'Frontier / Opus',
-          description: '$15/1M input (Claude Opus)',
-          rate: 15,
-          short: 'Frontier ($15/1M)',
-        },
-        {
-          label: 'Custom rate...',
-          description: 'Enter any exact $ per 1M input token price',
-          rate: -1,
-          short: 'Custom',
-        }
-      );
-
-      const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select a detected Copilot/VS Code model or pricing tier',
-      });
-      if (!picked || picked.kind === vscode.QuickPickItemKind.Separator) return;
-
-      let rate = picked.rate;
-      let shortLabel = picked.short;
-      if (rate < 0) {
-        const raw = await vscode.window.showInputBox({
-          prompt: 'Enter input token cost in USD per 1M tokens (e.g., 2.5)',
-          value: '3',
-          validateInput: (v) => (Number(v) > 0 ? undefined : 'Enter a positive number'),
-        });
-        if (!raw) return;
-        rate = Number(raw);
-        shortLabel = `Custom ($${rate}/1M)`;
-      }
-
-      const cfg = vscode.workspace.getConfiguration('archpilot');
-      await cfg.update('costPerMillionInputTokens', rate, vscode.ConfigurationTarget.Global);
-      await cfg.update('modelPresetLabel', shortLabel, vscode.ConfigurationTarget.Global);
-      updateActiveFileTokens(vscode.window.activeTextEditor);
-      await runAudit();
     }),
 
     vscode.commands.registerCommand('archpilot.optimizeTokenCost', async (node?: CommandTarget) => {
