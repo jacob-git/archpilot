@@ -3,6 +3,7 @@ import { access, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   analyzeBlastRadius,
+  analyzeMigration,
   auditRepository,
   buildArchitectureDiagram,
   formatHtmlReport,
@@ -12,10 +13,12 @@ import {
   generateArchitectureMd,
   generateArchMap,
   generateMermaidDiagram,
+  generateMigrationPlanMd,
   generatePrHandoffBrief,
   generateSmartArchPilotConfig,
   runDependencyAudit,
   type AuditReport,
+  type MigrationPlaybookId,
   type Severity,
 } from '@archpilot/core';
 import { runMcpServer } from './mcp.js';
@@ -143,6 +146,8 @@ async function main(): Promise<void> {
   let prBriefMode = false;
   let depAuditMode = false;
   let npmRegistry: string | undefined;
+  let migratePlaybook: MigrationPlaybookId | undefined;
+  let writeMigrateMd = false;
   let diffMode = false;
   let failUnder: number | undefined;
 
@@ -175,6 +180,9 @@ async function main(): Promise<void> {
       depAuditMode = true;
     } else if (arg === '--registry') {
       npmRegistry = args[++i];
+    } else if (arg === '--migrate' || arg === '--migrate-md') {
+      migratePlaybook = (args[++i] ?? 'webpack-to-vite') as MigrationPlaybookId;
+      if (arg === '--migrate-md') writeMigrateMd = true;
     } else if (arg === '--diff') {
       diffMode = true;
     } else if (arg === '--fail-under') {
@@ -196,6 +204,8 @@ Options:
   --pr-brief                   Generate ready-to-paste PR & QA Handoff Brief (Markdown)
   --dep-audit                  Audit dependency CVEs (auto-falls back to public npmjs.org)
   --registry <url>             Optional npm registry URL for --dep-audit
+  --migrate <playbook>         Scan upgrade blockers (webpack-to-vite | spring-boot-3-to-4 | cjs-to-esm | react-18-to-19 | pydantic-v1-to-v2)
+  --migrate-md <playbook>      Generate dependency-ordered MIGRATION_PLAN.md
   --diff                       Analyze git changed files, blast radius, and QA test gaps
   --format <fmt>               Output format: text | json | sarif | markdown | html (default: text)
   --json                       Alias for --format json
@@ -258,6 +268,34 @@ Options:
     }
     if (depReport.counts.critical > 0 || depReport.counts.high > 0) {
       process.exitCode = 1;
+    }
+    return;
+  }
+  if (migratePlaybook) {
+    const plan = await analyzeMigration(resolved, { playbookId: migratePlaybook });
+    if (writeMigrateMd) {
+      const target = path.join(resolved, 'MIGRATION_PLAN.md');
+      await writeFile(target, generateMigrationPlanMd(plan), 'utf8');
+      console.log(`Created ${target} (${plan.totalBlockers} blockers across ${plan.impactedFileCount} files).`);
+      return;
+    }
+    if (format === 'json') {
+      console.log(JSON.stringify(plan, null, 2));
+    } else if (format === 'markdown') {
+      console.log(generateMigrationPlanMd(plan));
+    } else {
+      console.log('');
+      console.log(`${BOLD}ArchPilot Migration Readiness: ${plan.name}${RESET}  ${DIM}${plan.rootDir}${RESET}`);
+      console.log(
+        `Blockers: ${plan.totalBlockers === 0 ? GREEN : YELLOW}${BOLD}${plan.totalBlockers}${RESET} across ${plan.impactedFileCount} files (effort: ${plan.estimatedEffort.toUpperCase()})`
+      );
+      for (const wave of plan.waves) {
+        console.log(`\n${BOLD}${wave.label}${RESET} ${DIM}(${wave.files.length} files)${RESET}`);
+        for (const f of wave.files.slice(0, 15)) {
+          console.log(`  • ${f.file} (${f.blockerCount} blockers, ${f.dependentCount} dependents)`);
+        }
+      }
+      console.log('');
     }
     return;
   }

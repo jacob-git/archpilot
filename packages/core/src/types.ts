@@ -98,12 +98,75 @@ export interface BoundaryRule {
   message?: string;
 }
 
+export interface MigrationRuleConfig {
+  name: string;
+  /** Disallowed import specifiers or path substrings (e.g. "legacy-auth-sdk", "javax.persistence"). */
+  forbidImports?: string[];
+  /** Disallowed regex patterns to search in source/config files (e.g. "process\\.env\\.REACT_APP_"). */
+  forbidPatterns?: string[];
+  /** Actionable guidance shown for each match. */
+  suggestion?: string;
+}
+
 export interface ArchPilotConfig {
   maxFileLines: number;
   maxInstructionTokens: number;
   maxFileTokens: number;
   ignore: string[];
   boundaries: BoundaryRule[];
+  migrations?: MigrationRuleConfig[];
+}
+
+export type MigrationPlaybookId =
+  | 'webpack-to-vite'
+  | 'spring-boot-3-to-4'
+  | 'cjs-to-esm'
+  | 'react-18-to-19'
+  | 'pydantic-v1-to-v2'
+  | 'custom';
+
+export interface MigrationPlaybookMeta {
+  id: MigrationPlaybookId;
+  name: string;
+  description: string;
+  recommended: boolean;
+  reason?: string;
+  customRule?: MigrationRuleConfig;
+}
+
+export interface MigrationBlocker {
+  file: string;
+  line?: number;
+  ruleId: string;
+  severity: Severity;
+  message: string;
+  suggestion: string;
+}
+
+export interface MigrationWaveFile {
+  file: string;
+  dependentCount: number;
+  blockerCount: number;
+  blockers: MigrationBlocker[];
+}
+
+export interface MigrationWave {
+  wave: number;
+  label: string;
+  description: string;
+  files: MigrationWaveFile[];
+}
+
+export interface MigrationPlan {
+  playbookId: MigrationPlaybookId;
+  name: string;
+  description: string;
+  rootDir: string;
+  totalBlockers: number;
+  impactedFileCount: number;
+  estimatedEffort: 'low' | 'medium' | 'high';
+  blockers: MigrationBlocker[];
+  waves: MigrationWave[];
 }
 
 export interface ScannedFile {

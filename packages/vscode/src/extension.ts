@@ -21,6 +21,7 @@ import {
   generateAndCopyPrBrief,
   runDependencyAuditPicker,
   showBlastRadiusPicker,
+  showMigrationPlanner,
 } from './reports.js';
 import {
   estimateModelRateUsd,
@@ -370,6 +371,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('archpilot.auditDependencies', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to audit dependency CVEs');
       if (audit) await runDependencyAuditPicker(audit);
+    }),
+
+    vscode.commands.registerCommand('archpilot.planMigration', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to plan upgrade or migration');
+      if (audit) await showMigrationPlanner(audit);
     }),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: CommandTarget) => {

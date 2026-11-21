@@ -3,9 +3,15 @@ import * as path from 'node:path';
 import { access, writeFile } from 'node:fs/promises';
 import {
   analyzeBlastRadius,
+  analyzeMigration,
   formatHtmlReport,
+  generateMigrationPlanMd,
+  generateMigrationWavePrompt,
   generatePrHandoffBrief,
   runDependencyAudit,
+  suggestMigrationPlaybooks,
+  type MigrationPlaybookId,
+  type MigrationRuleConfig,
 } from '@archpilot/core';
 import type { FolderAudit } from './types.js';
 
@@ -267,5 +273,186 @@ export async function runDependencyAuditPicker(audit: FolderAudit): Promise<void
     }
   } else if (picked?.action === 'openUrl' && picked.url) {
     await vscode.env.openExternal(vscode.Uri.parse(picked.url));
+  }
+}
+
+export async function showMigrationPlanner(audit: FolderAudit): Promise<void> {
+  const playbooks = await suggestMigrationPlaybooks(audit.rootDir);
+
+  interface PlaybookPick extends vscode.QuickPickItem {
+    playbookId?: MigrationPlaybookId;
+    customRule?: MigrationRuleConfig;
+    isAdHocCustom?: boolean;
+  }
+
+  const pickItems: PlaybookPick[] = [];
+  const recommended = playbooks.filter((p) => p.recommended);
+  const others = playbooks.filter((p) => !p.recommended);
+
+  if (recommended.length > 0) {
+    pickItems.push({ label: 'Recommended for this repository', kind: vscode.QuickPickItemKind.Separator });
+    for (const p of recommended) {
+      pickItems.push({
+        label: `$(rocket) ${p.name}`,
+        description: p.reason ?? '',
+        detail: p.description,
+        playbookId: p.id,
+        customRule: p.customRule,
+      });
+    }
+  }
+
+  if (others.length > 0) {
+    pickItems.push({ label: 'Other Built-In Upgrade Playbooks', kind: vscode.QuickPickItemKind.Separator });
+    for (const p of others) {
+      pickItems.push({
+        label: `$(tools) ${p.name}`,
+        detail: p.description,
+        playbookId: p.id,
+      });
+    }
+  }
+
+  pickItems.push({ label: 'Custom Upgrade / Library Migration', kind: vscode.QuickPickItemKind.Separator });
+  pickItems.push({
+    label: '$(edit) Custom Migration Scan...',
+    description: 'Search for any legacy import or code pattern',
+    detail: 'Example: moment -> dayjs, legacy-auth-sdk -> auth-v2, or custom regex',
+    playbookId: 'custom',
+    isAdHocCustom: true,
+  });
+
+  const selected = await vscode.window.showQuickPick(pickItems, {
+    title: `ArchPilot Upgrade & Migration Planner: ${audit.name}`,
+    placeHolder: 'Choose an upgrade playbook or run a custom migration scan',
+  });
+  if (!selected || !selected.playbookId) return;
+
+  let customRule = selected.customRule;
+  if (selected.isAdHocCustom) {
+    const name = await vscode.window.showInputBox({
+      title: 'Custom Migration Name',
+      prompt: 'Enter a short name for this upgrade (e.g. moment -> dayjs)',
+      placeHolder: 'moment -> dayjs',
+    });
+    if (!name) return;
+    const importInput = await vscode.window.showInputBox({
+      title: 'Legacy Imports to Replace (optional)',
+      prompt: 'Comma-separated legacy package/import names to flag (leave blank if using a code pattern)',
+      placeHolder: 'moment, legacy-auth-sdk',
+    });
+    const patternInput = await vscode.window.showInputBox({
+      title: 'Legacy Code Pattern Regex (optional)',
+      prompt: 'Optional regex pattern to flag in source/config files',
+      placeHolder: 'process\\.env\\.REACT_APP_',
+    });
+    const forbidImports = (importInput ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const forbidPatterns = patternInput?.trim() ? [patternInput.trim()] : [];
+    if (forbidImports.length === 0 && forbidPatterns.length === 0) {
+      void vscode.window.showWarningMessage('Enter at least one legacy import or regex pattern to scan.');
+      return;
+    }
+    customRule = {
+      name: name.trim(),
+      forbidImports,
+      forbidPatterns,
+      suggestion: `Migrate legacy usage as part of "${name.trim()}".`,
+    };
+  }
+
+  const plan = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `ArchPilot: Scanning ${audit.name} for migration blockers...`,
+      cancellable: false,
+    },
+    () => analyzeMigration(audit.rootDir, { playbookId: selected.playbookId!, customRule })
+  );
+
+  if (plan.totalBlockers === 0) {
+    void vscode.window.showInformationMessage(
+      `ArchPilot Migration Scan (${plan.name}): 0 blockers found in ${audit.name}.`
+    );
+    return;
+  }
+
+  interface PlanActionPick extends vscode.QuickPickItem {
+    action?: 'writeMd' | 'aiWave1' | 'copyWave1' | 'openFile';
+    relPath?: string;
+    line?: number;
+  }
+
+  const resultItems: PlanActionPick[] = [
+    {
+      label: '$(markdown) Generate MIGRATION_PLAN.md',
+      description: `${plan.totalBlockers} blockers across ${plan.impactedFileCount} files (${plan.estimatedEffort} effort)`,
+      action: 'writeMd',
+    },
+    {
+      label: '$(comment-discussion) Send Wave 1 to AI Chat',
+      description: `Migrate ${plan.waves[0]?.files.length ?? 0} safest files first`,
+      action: 'aiWave1',
+    },
+    {
+      label: '$(copy) Copy Wave 1 AI Prompt',
+      description: 'Paste into Copilot, Cursor, Claude, or any agent',
+      action: 'copyWave1',
+    },
+  ];
+
+  for (const wave of plan.waves) {
+    resultItems.push({
+      label: `${wave.label} (${wave.files.length} files)`,
+      kind: vscode.QuickPickItemKind.Separator,
+    });
+    for (const wf of wave.files.slice(0, 15)) {
+      const first = wf.blockers[0];
+      resultItems.push({
+        label: `$(warning) ${wf.file}`,
+        description: `${wf.blockerCount} blocker${wf.blockerCount === 1 ? '' : 's'} · ${wf.dependentCount} dep${wf.dependentCount === 1 ? '' : 's'}`,
+        detail: first ? `${first.line ? `L${first.line}: ` : ''}${first.message}` : undefined,
+        action: 'openFile',
+        relPath: wf.file,
+        line: first?.line,
+      });
+    }
+  }
+
+  const chosen = await vscode.window.showQuickPick(resultItems, {
+    title: `${plan.name}: ${plan.totalBlockers} blockers in ${plan.impactedFileCount} files`,
+    placeHolder: 'Generate MIGRATION_PLAN.md, send Wave 1 to AI Chat, or open a file',
+  });
+  if (!chosen) return;
+
+  if (chosen.action === 'writeMd') {
+    const target = path.join(audit.rootDir, 'MIGRATION_PLAN.md');
+    await writeFile(target, generateMigrationPlanMd(plan), 'utf8');
+    const doc = await vscode.workspace.openTextDocument(target);
+    await vscode.window.showTextDocument(doc);
+  } else if (chosen.action === 'aiWave1') {
+    const prompt = generateMigrationWavePrompt(plan, plan.waves[0]?.wave);
+    try {
+      await vscode.commands.executeCommand('workbench.action.chat.open', { query: prompt });
+    } catch {
+      await vscode.env.clipboard.writeText(prompt);
+      void vscode.window.showInformationMessage('Copied Wave 1 migration prompt to clipboard.');
+    }
+  } else if (chosen.action === 'copyWave1') {
+    await vscode.env.clipboard.writeText(generateMigrationWavePrompt(plan, plan.waves[0]?.wave));
+    void vscode.window.showInformationMessage('Copied Wave 1 migration prompt to clipboard.');
+  } else if (chosen.action === 'openFile' && chosen.relPath) {
+    const fullPath = path.join(audit.rootDir, chosen.relPath);
+    if (await fileExists(fullPath)) {
+      const doc = await vscode.workspace.openTextDocument(fullPath);
+      const editor = await vscode.window.showTextDocument(doc);
+      if (chosen.line && chosen.line > 0) {
+        const pos = new vscode.Position(chosen.line - 1, 0);
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+      }
+    }
   }
 }

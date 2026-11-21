@@ -204,6 +204,12 @@
         "title": "Audit Dependency Vulnerabilities (CVEs)",
         "category": "ArchPilot",
         "icon": "$(shield)"
+      },
+      {
+        "command": "archpilot.planMigration",
+        "title": "Plan Upgrade / Migration...",
+        "category": "ArchPilot",
+        "icon": "$(rocket)"
       }
     ],
     "submenus": [
@@ -397,6 +403,11 @@
           "command": "archpilot.generatePrBrief",
           "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_audit@3"
+        },
+        {
+          "command": "archpilot.planMigration",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
+          "group": "1_audit@4"
         }
       ],
       "archpilot.optimize": [

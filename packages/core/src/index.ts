@@ -32,6 +32,12 @@ export {
   generateSmartArchPilotConfig,
 } from './generators.js';
 export { formatHtmlReport, formatMarkdown, formatSarif } from './formatters.js';
+export {
+  analyzeMigration,
+  generateMigrationPlanMd,
+  generateMigrationWavePrompt,
+  suggestMigrationPlaybooks,
+} from './migrations.js';
 export type {
   ArchPilotConfig,
   AuditOptions,
@@ -43,6 +49,13 @@ export type {
   DetectedLanguage,
   DetectedStack,
   Finding,
+  MigrationBlocker,
+  MigrationPlan,
+  MigrationPlaybookId,
+  MigrationPlaybookMeta,
+  MigrationRuleConfig,
+  MigrationWave,
+  MigrationWaveFile,
   Severity,
   TokenCostEstimate,
   TokenFootprint,

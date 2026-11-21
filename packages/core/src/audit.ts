@@ -16,6 +16,7 @@ import { runBoundariesCheck } from './checks/boundaries.js';
 import { runContextBloatCheck } from './checks/contextBloat.js';
 import { runVerifiabilityCheck } from './checks/verifiability.js';
 import { runStackPacksCheck } from './checks/stackPacks.js';
+import { checkCustomMigrations } from './migrations.js';
 import { runSecurityCheck } from './checks/security.js';
 
 const CATEGORY_META: Array<{ id: CategoryId; label: string; weight: number }> = [
@@ -98,6 +99,7 @@ export async function auditRepository(
     boundaryFindings,
     securityFindings,
     stackFindings,
+    migrationFindings,
     contextResult,
     verifyFindings,
   ] = await Promise.all([
@@ -105,6 +107,7 @@ export async function auditRepository(
     runBoundariesCheck(ctx, hasConfigFile),
     runSecurityCheck(ctx),
     runStackPacksCheck(ctx),
+    checkCustomMigrations(ctx),
     runContextBloatCheck(ctx, options),
     runVerifiabilityCheck(ctx),
   ]);
@@ -113,7 +116,7 @@ export async function auditRepository(
     instructions: instructionFindings,
     architecture: boundaryFindings,
     security: securityFindings,
-    stack: stackFindings,
+    stack: [...stackFindings, ...migrationFindings],
     context: contextResult.findings,
     verifiability: verifyFindings,
   };

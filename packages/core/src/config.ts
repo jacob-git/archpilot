@@ -59,6 +59,7 @@ export async function loadConfig(rootDir: string): Promise<{
           ? Array.from(new Set([...DEFAULT_CONFIG.ignore, ...parsed.ignore]))
           : DEFAULT_CONFIG.ignore,
         boundaries: Array.isArray(parsed.boundaries) ? parsed.boundaries : [],
+        migrations: Array.isArray(parsed.migrations) ? parsed.migrations : [],
       },
     };
   } catch {
