@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline';
 import path from 'node:path';
-import { auditRepository, generateFixPrompt } from '@archpilot/core';
+import { auditRepository, generateArchMap, generateFixPrompt } from '@archpilot/core';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -47,6 +47,20 @@ const TOOLS = [
     name: 'get_fix_prompt',
     description:
       'Generate a structured remediation checklist for all ArchPilot findings in a repository.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_arch_map',
+    description:
+      'Generate a compact architecture index (modules, entry points, most-imported hubs, boundaries) so an AI agent can locate code without scanning the whole repo.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -115,6 +129,13 @@ async function handleToolCall(
     const report = await auditRepository(repoPath);
     return {
       content: [{ type: 'text', text: generateFixPrompt(report) }],
+    };
+  }
+
+  if (name === 'get_arch_map') {
+    const map = await generateArchMap(repoPath);
+    return {
+      content: [{ type: 'text', text: map }],
     };
   }
 

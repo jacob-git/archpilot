@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { auditRepository, formatMarkdown, formatSarif } from '../src/index.js';
+import { auditRepository, formatMarkdown, formatSarif, generateArchMap } from '../src/index.js';
 
 async function createTempRepo(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'archpilot-test-'));
@@ -213,6 +213,39 @@ test('detects token budget bloat, unignored token sinks, and LLM cost traps', as
     assert.ok(report.findings.some((f) => f.id === 'token-sink'));
     assert.ok(report.findings.some((f) => f.id === 'llm-missing-max-tokens'));
     assert.ok(report.findings.some((f) => f.id === 'llm-call-in-loop'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('detects duplicate instruction files and generates compact ARCHMAP.md', async () => {
+  const sharedRules = [
+    '# Engineering Rules',
+    '- Always run unit tests before opening a pull request.',
+    '- Follow strict module boundaries between domain and UI layers.',
+    '- Never commit API keys or credentials to source control.',
+    '- Keep TypeScript strict mode enabled across all packages.',
+    '- Document all public REST endpoints in OpenAPI YAML.',
+  ].join('\n');
+
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'AGENTS.md': sharedRules,
+    'CLAUDE.md': sharedRules,
+    'package.json': JSON.stringify({ name: 'dup-test', scripts: { test: 'echo ok' } }),
+    'src/index.ts': "import { helper } from './core/helper.js';\nexport const run = helper;\n",
+    'src/core/helper.ts': 'export const helper = () => 1;\n',
+    'src/core/helper.test.ts': 'export {};\n',
+  });
+
+  try {
+    const report = await auditRepository(dir);
+    assert.ok(report.findings.some((f) => f.id === 'duplicate-instructions'));
+
+    const archMap = await generateArchMap(dir);
+    assert.ok(archMap.includes('# ARCHMAP.md'));
+    assert.ok(archMap.includes('src/index.ts'));
+    assert.ok(archMap.includes('src/core/helper.ts'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

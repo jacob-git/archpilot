@@ -134,6 +134,11 @@
         "command": "archpilot.optimizeTokenCost",
         "title": "Reduce AI Token Cost (Exclude Large Files)",
         "icon": "$(zap)"
+      },
+      {
+        "command": "archpilot.generateArchMap",
+        "title": "Generate ARCHMAP.md (Compact Repo Map)",
+        "icon": "$(map)"
       }
     ],
     "menus": {
@@ -179,6 +184,11 @@
           "command": "archpilot.copyBadge",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\./",
           "group": "3_share@1"
+        },
+        {
+          "command": "archpilot.generateArchMap",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\./",
+          "group": "2_generate@3"
         },
         {
           "command": "archpilot.quickFixFinding",

@@ -2,6 +2,7 @@ export { auditRepository } from './audit.js';
 export { loadConfig, DEFAULT_CONFIG } from './config.js';
 export {
   generateAgentsMd,
+  generateArchMap,
   generateArchPilotConfig,
   generateFixPrompt,
   generateGitignore,

@@ -42,6 +42,8 @@ export async function runInstructionsCheck(ctx: CheckContext): Promise<Finding[]
       ? new Set(Object.keys(ctx.packageJson.scripts as Record<string, unknown>))
       : undefined;
 
+  const normalizedLinesByFile: Array<{ relPath: string; lines: Set<string> }> = [];
+
   for (const file of instructionFiles) {
     let content: string;
     try {
@@ -51,6 +53,12 @@ export async function runInstructionsCheck(ctx: CheckContext): Promise<Finding[]
     }
 
     const lines = content.split(/\r?\n/);
+    const meaningful = new Set(
+      lines
+        .map((l) => l.trim().toLowerCase())
+        .filter((l) => l.length >= 20 && !l.startsWith('#'))
+    );
+    normalizedLinesByFile.push({ relPath: file.relPath, lines: meaningful });
 
     if (lines.length > 300) {
       findings.push({
@@ -117,6 +125,33 @@ export async function runInstructionsCheck(ctx: CheckContext): Promise<Finding[]
             });
           }
         }
+      }
+    }
+  }
+
+  // Detect duplicated rules across multiple instruction files (2x-3x always-on token waste)
+  for (let a = 0; a < normalizedLinesByFile.length; a++) {
+    for (let b = a + 1; b < normalizedLinesByFile.length; b++) {
+      const first = normalizedLinesByFile[a];
+      const second = normalizedLinesByFile[b];
+      const smaller = Math.min(first.lines.size, second.lines.size);
+      if (smaller < 5) continue;
+
+      let shared = 0;
+      for (const line of first.lines) {
+        if (second.lines.has(line)) shared++;
+      }
+      const overlap = shared / smaller;
+      if (overlap >= 0.4) {
+        findings.push({
+          id: 'duplicate-instructions',
+          category: 'instructions',
+          severity: 'warning',
+          file: second.relPath,
+          line: 1,
+          message: `${second.relPath} overlaps ~${Math.round(overlap * 100)}% with ${first.relPath}, multiplying always-on token cost.`,
+          suggestion: `Keep one canonical ${first.relPath} and replace ${second.relPath} with a 2-line pointer to it.`,
+        });
       }
     }
   }

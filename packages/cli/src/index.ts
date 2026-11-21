@@ -6,6 +6,7 @@ import {
   formatMarkdown,
   formatSarif,
   generateAgentsMd,
+  generateArchMap,
   generateArchPilotConfig,
   type AuditReport,
   type Severity,
@@ -128,6 +129,7 @@ async function main(): Promise<void> {
   let targetDir = '.';
   let format: 'text' | 'json' | 'sarif' | 'markdown' = 'text';
   let initMode = false;
+  let mapMode = false;
   let failUnder: number | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -141,6 +143,8 @@ async function main(): Promise<void> {
       }
     } else if (arg === '--init') {
       initMode = true;
+    } else if (arg === '--map') {
+      mapMode = true;
     } else if (arg === '--fail-under') {
       const next = Number(args[++i]);
       if (!Number.isNaN(next)) failUnder = next;
@@ -154,6 +158,7 @@ Commands:
 
 Options:
   --init                       Generate starter AGENTS.md and archpilot.json
+  --map                        Generate compact ARCHMAP.md repo index to save agent tokens
   --format <fmt>               Output format: text | json | sarif | markdown (default: text)
   --json                       Alias for --format json
   --fail-under <score>         Exit with code 1 if overall score is below <score>
@@ -168,6 +173,13 @@ Options:
   const resolved = path.resolve(targetDir);
   if (initMode) {
     await runInit(resolved);
+    return;
+  }
+  if (mapMode) {
+    const mapContent = await generateArchMap(resolved);
+    const mapPath = path.join(resolved, 'ARCHMAP.md');
+    await writeFile(mapPath, mapContent, 'utf8');
+    console.log(`${GREEN}Generated ARCHMAP.md (~${Math.ceil(mapContent.length / 4)} tokens)${RESET}`);
     return;
   }
 

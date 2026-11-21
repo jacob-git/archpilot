@@ -5,6 +5,7 @@ import {
   auditRepository,
   DEFAULT_CONFIG,
   generateAgentsMd,
+  generateArchMap,
   generateArchPilotConfig,
   generateFixPrompt,
   generateGitignore,
@@ -372,11 +373,63 @@ async function addIgnoreToConfig(rootDir: string, relPath: string): Promise<void
   await writeFile(configPath, JSON.stringify(configObj, null, 2) + '\n', 'utf8');
 }
 
+async function appendToIgnoreFile(filePath: string, entries: string[]): Promise<number> {
+  const existing = (await exists(filePath)) ? await readFile(filePath, 'utf8') : '';
+  const existingLines = new Set(
+    existing
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+  );
+  const toAdd = entries.filter((e) => !existingLines.has(e));
+  if (toAdd.length === 0) return 0;
+  const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+  await writeFile(filePath, `${existing}${prefix}${toAdd.join('\n')}\n`, 'utf8');
+  return toAdd.length;
+}
+
+async function syncAiIgnoreFiles(rootDir: string, entries: string[]): Promise<number> {
+  const added = await appendToIgnoreFile(path.join(rootDir, '.aiignore'), entries);
+  await appendToIgnoreFile(path.join(rootDir, '.cursorignore'), entries);
+  return added;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const diagnostics = vscode.languages.createDiagnosticCollection('archpilot');
   const treeProvider = new ArchPilotTreeProvider();
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.command = 'archpilot.refresh';
+
+  const fileTokenBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+  fileTokenBar.command = 'archpilot.selectModelPreset';
+
+  const updateActiveFileTokens = (editor?: vscode.TextEditor): void => {
+    if (!editor || editor.document.uri.scheme !== 'file') {
+      fileTokenBar.hide();
+      return;
+    }
+    const text = editor.document.getText();
+    const tokens = Math.ceil(text.length / 4);
+    const isLarge = tokens >= DEFAULT_CONFIG.maxFileTokens;
+    const cfg = vscode.workspace.getConfiguration('archpilot');
+    const rate = cfg.get<number>('costPerMillionInputTokens', 3);
+    const singleReadCost = (tokens * rate) / 1_000_000;
+
+    fileTokenBar.text = isLarge
+      ? `$(warning) ~${tokens.toLocaleString('en-US')} tok`
+      : `$(file-code) ~${tokens.toLocaleString('en-US')} tok`;
+    fileTokenBar.backgroundColor = isLarge
+      ? new vscode.ThemeColor('statusBarItem.warningBackground')
+      : undefined;
+    fileTokenBar.tooltip = [
+      `Active file: ${path.basename(editor.document.fileName)}`,
+      `Estimated size: ~${tokens.toLocaleString('en-US')} tokens (~$${singleReadCost.toFixed(4)} per read at $${rate}/1M)`,
+      isLarge
+        ? 'Large file warning: attaching this file to AI chat will consume significant context tokens.'
+        : 'Click to change model pricing preset.',
+    ].join('\n');
+    fileTokenBar.show();
+  };
 
   const runAudit = async (): Promise<void> => {
     const folders = vscode.workspace.workspaceFolders;
@@ -463,7 +516,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     diagnostics,
     statusBar,
+    fileTokenBar,
     vscode.window.registerTreeDataProvider('archpilot.auditView', treeProvider),
+    vscode.window.onDidChangeActiveTextEditor((editor) => updateActiveFileTokens(editor)),
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (vscode.window.activeTextEditor?.document === e.document) {
+        updateActiveFileTokens(vscode.window.activeTextEditor);
+      }
+    }),
     vscode.commands.registerCommand('archpilot.refresh', runAudit),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: TreeNode) => {
@@ -588,22 +648,24 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('archpilot.addToAiIgnore', async (node?: TreeNode) => {
       if (!node || node.kind !== 'finding' || !node.finding.file) return;
-      const aiIgnorePath = path.join(node.audit.rootDir, '.aiignore');
-      let existing = '';
-      if (await exists(aiIgnorePath)) {
-        existing = await readFile(aiIgnorePath, 'utf8');
-      }
-      const lines = existing
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-      if (!lines.includes(node.finding.file)) {
-        const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
-        await writeFile(aiIgnorePath, `${existing}${prefix}${node.finding.file}\n`, 'utf8');
-      }
+      await syncAiIgnoreFiles(node.audit.rootDir, [node.finding.file]);
       await runAudit();
       void vscode.window.showInformationMessage(
-        `Added "${node.finding.file}" to .aiignore to reduce AI agent token burn.`
+        `Added "${node.finding.file}" to .aiignore & .cursorignore to save AI agent tokens.`
+      );
+    }),
+
+    vscode.commands.registerCommand('archpilot.generateArchMap', async (node?: TreeNode) => {
+      const rootDir =
+        rootDirFromNode(node) ??
+        (await pickWorkspaceFolder('Select project folder for ARCHMAP.md'));
+      if (!rootDir) return;
+      const content = await generateArchMap(rootDir);
+      const target = path.join(rootDir, 'ARCHMAP.md');
+      await writeFile(target, content, 'utf8');
+      await openFileInEditor(target);
+      void vscode.window.showInformationMessage(
+        `Generated ARCHMAP.md (~${Math.ceil(content.length / 4)} tokens) so AI agents can locate modules in 1 read.`
       );
     }),
 
@@ -711,23 +773,10 @@ export function activate(context: vscode.ExtensionContext): void {
       let addedCount = 0;
 
       if (tf.tokenSinks.length > 0) {
-        const aiIgnorePath = path.join(audit.rootDir, '.aiignore');
-        let existing = (await exists(aiIgnorePath)) ? await readFile(aiIgnorePath, 'utf8') : '';
-        const existingLines = new Set(
-          existing
-            .split(/\r?\n/)
-            .map((l) => l.trim())
-            .filter(Boolean)
+        addedCount = await syncAiIgnoreFiles(
+          audit.rootDir,
+          tf.tokenSinks.map((s) => s.file)
         );
-        const toAdd = tf.tokenSinks
-          .map((s) => s.file)
-          .filter((f) => !existingLines.has(f));
-
-        if (toAdd.length > 0) {
-          const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
-          await writeFile(aiIgnorePath, `${existing}${prefix}${toAdd.join('\n')}\n`, 'utf8');
-          addedCount = toAdd.length;
-        }
       }
 
       await runAudit();
@@ -738,7 +787,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       if (addedCount > 0 && !hasBloatedInstructions) {
         void vscode.window.showInformationMessage(
-          `Added ${addedCount} token sink${addedCount > 1 ? 's' : ''} to .aiignore — estimated savings ~$${savedEstimate.toFixed(2)}/mo/dev!`
+          `Added ${addedCount} large file${addedCount > 1 ? 's' : ''} to .aiignore & .cursorignore — estimated savings ~$${savedEstimate.toFixed(2)}/mo/dev!`
         );
       } else if (hasBloatedInstructions) {
         const msg =
@@ -792,6 +841,7 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  updateActiveFileTokens(vscode.window.activeTextEditor);
   void runAudit();
 }
 
