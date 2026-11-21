@@ -3,7 +3,7 @@
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
   "version": "0.1.0",
-  "publisher": "archpilot",
+  "publisher": "Pallattu",
   "icon": "media/icon.png",
   "galleryBanner": {
     "color": "#0F172A",
