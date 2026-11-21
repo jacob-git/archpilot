@@ -32,8 +32,10 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
       item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
       item.tooltip = `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\n${report.summary.filesScanned} files scanned in ${report.summary.durationMs}ms\nRight-click for actions`;
       item.iconPath = new vscode.ThemeIcon('folder');
-      item.contextValue =
+      const hasTokenSavings = report.tokenFootprint.costEstimate.potentialMonthlySavingsUsd > 0;
+      const baseCtx =
         report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
+      item.contextValue = hasTokenSavings ? `${baseCtx}.tokenSavings` : baseCtx;
       return item;
     }
 
@@ -49,8 +51,10 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
           ? `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nRight-click to Auto-Fix, Copy AI Fix Prompt, or Copy Badge`
           : `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nAll checks passed! Right-click to Copy README Badge`;
       item.iconPath = new vscode.ThemeIcon('shield');
-      item.contextValue =
+      const hasTokenSavings = report.tokenFootprint.costEstimate.potentialMonthlySavingsUsd > 0;
+      const baseCtx =
         report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
+      item.contextValue = hasTokenSavings ? `${baseCtx}.tokenSavings` : baseCtx;
       return item;
     }
 
@@ -62,12 +66,12 @@ export class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> 
       const hasSavings = c.potentialMonthlySavingsUsd > 0;
       const label = hasSavings
         ? `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev (Save ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo)`
-        : `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev`;
+        : `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev · Optimized`;
 
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
       item.description = `~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tok/turn · ${c.modelLabel}`;
       item.iconPath = new vscode.ThemeIcon(
-        hasSavings ? 'flame' : 'pulse',
+        hasSavings ? 'flame' : 'pass',
         hasSavings
           ? new vscode.ThemeColor('problemsWarningIcon.foreground')
           : new vscode.ThemeColor('testing.iconPassed')

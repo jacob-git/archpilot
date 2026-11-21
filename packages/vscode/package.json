@@ -162,22 +162,22 @@
       "view/item/context": [
         {
           "command": "archpilot.autoFixProject",
-          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
           "group": "1_fix@1"
         },
         {
           "command": "archpilot.copyFixPrompt",
-          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
           "group": "1_fix@2"
         },
         {
           "command": "archpilot.generateAgentsMd",
-          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
           "group": "2_generate@1"
         },
         {
           "command": "archpilot.initConfig",
-          "when": "view == archpilot.auditView && viewItem == archpilot.project.hasIssues",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project\\.hasIssues/",
           "group": "2_generate@2"
         },
         {
@@ -212,7 +212,7 @@
         },
         {
           "command": "archpilot.optimizeTokenCost",
-          "when": "view == archpilot.auditView && (viewItem == archpilot.tokenCost.hasSavings || viewItem == archpilot.project.hasIssues)",
+          "when": "view == archpilot.auditView && (viewItem == archpilot.tokenCost.hasSavings || viewItem =~ /\\.tokenSavings$/)",
           "group": "1_fix@3"
         },
         {
