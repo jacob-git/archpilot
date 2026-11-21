@@ -19,6 +19,7 @@ import { openArchitectureGraph } from './graphView.js';
 import {
   exportExecutiveHtmlReport,
   generateAndCopyPrBrief,
+  runDependencyAuditPicker,
   showBlastRadiusPicker,
 } from './reports.js';
 import {
@@ -312,6 +313,15 @@ export function activate(context: vscode.ExtensionContext): void {
       );
       if (!audit) return;
       await generateAndCopyPrBrief(audit);
+    }),
+
+    vscode.commands.registerCommand('archpilot.auditDependencies', async (node?: TreeNode) => {
+      const audit = await resolveAuditForNode(
+        node,
+        'Select project folder to audit dependency CVEs'
+      );
+      if (!audit) return;
+      await runDependencyAuditPicker(audit);
     }),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: TreeNode) => {

@@ -14,6 +14,7 @@ import {
   generateMermaidDiagram,
   generatePrHandoffBrief,
   generateSmartArchPilotConfig,
+  runDependencyAudit,
   type AuditReport,
   type Severity,
 } from '@archpilot/core';
@@ -140,6 +141,8 @@ async function main(): Promise<void> {
   let diagramMode = false;
   let archMdMode = false;
   let prBriefMode = false;
+  let depAuditMode = false;
+  let npmRegistry: string | undefined;
   let diffMode = false;
   let failUnder: number | undefined;
 
@@ -168,6 +171,10 @@ async function main(): Promise<void> {
       archMdMode = true;
     } else if (arg === '--pr-brief') {
       prBriefMode = true;
+    } else if (arg === '--dep-audit') {
+      depAuditMode = true;
+    } else if (arg === '--registry') {
+      npmRegistry = args[++i];
     } else if (arg === '--diff') {
       diffMode = true;
     } else if (arg === '--fail-under') {
@@ -187,6 +194,8 @@ Options:
   --diagram                    Output living Mermaid architecture diagram (modules + external systems)
   --arch-md                    Generate ARCHITECTURE.md with living Mermaid diagram
   --pr-brief                   Generate ready-to-paste PR & QA Handoff Brief (Markdown)
+  --dep-audit                  Audit dependency CVEs (auto-falls back to public npmjs.org)
+  --registry <url>             Optional npm registry URL for --dep-audit
   --diff                       Analyze git changed files, blast radius, and QA test gaps
   --format <fmt>               Output format: text | json | sarif | markdown | html (default: text)
   --json                       Alias for --format json
@@ -224,6 +233,32 @@ Options:
   }
   if (prBriefMode) {
     console.log(await generatePrHandoffBrief(resolved));
+    return;
+  }
+  if (depAuditMode) {
+    const depReport = await runDependencyAudit(resolved, { npmRegistry });
+    if (format === 'json') {
+      console.log(JSON.stringify(depReport, null, 2));
+    } else {
+      console.log('');
+      console.log(`${BOLD}ArchPilot Dependency CVE Audit${RESET}  ${DIM}${depReport.rootDir}${RESET}`);
+      console.log(
+        `Total CVEs: ${depReport.counts.total} (${RED}${depReport.counts.critical} critical${RESET}, ${RED}${depReport.counts.high} high${RESET}, ${YELLOW}${depReport.counts.moderate} moderate${RESET}, ${CYAN}${depReport.counts.low} low${RESET})`
+      );
+      for (const note of depReport.notes) console.log(`${DIM}${note}${RESET}`);
+      for (const v of depReport.vulnerabilities) {
+        const fix = v.fixAvailable
+          ? v.isBreakingFix
+            ? `breaking fix -> ${v.fixedVersion ?? 'major'}`
+            : `safe fix -> ${v.fixedVersion ?? 'available'}`
+          : 'no auto-fix';
+        console.log(`  [${v.severity.toUpperCase()}] ${v.packageName} (${fix}) — ${v.title}`);
+      }
+      console.log('');
+    }
+    if (depReport.counts.critical > 0 || depReport.counts.high > 0) {
+      process.exitCode = 1;
+    }
     return;
   }
   if (diffMode) {

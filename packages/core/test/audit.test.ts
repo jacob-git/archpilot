@@ -15,6 +15,7 @@ import {
   generateMermaidDiagram,
   generatePrHandoffBrief,
   generateSmartArchPilotConfig,
+  parseNpmAuditJson,
 } from '../src/index.js';
 
 async function createTempRepo(files: Record<string, string>): Promise<string> {
@@ -538,4 +539,26 @@ test('generates PR & QA Handoff Brief with risk badge, Mermaid impact map, and Q
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('parses npm audit JSON CVEs and detects corporate ENOAUDIT fallback trigger', () => {
+  const sample = JSON.stringify({
+    vulnerabilities: {
+      esbuild: {
+        severity: 'moderate',
+        via: [{ title: 'esbuild dev server request issue', url: 'https://example.com/adv' }],
+        fixAvailable: { version: '0.25.5', isSemVerMajor: true },
+      },
+    },
+  });
+  const ok = parseNpmAuditJson(sample);
+  assert.equal(ok.vulnerabilities.length, 1);
+  assert.equal(ok.vulnerabilities[0].packageName, 'esbuild');
+  assert.equal(ok.vulnerabilities[0].isBreakingFix, true);
+  assert.equal(ok.vulnerabilities[0].fixedVersion, '0.25.5');
+
+  const corpErr = parseNpmAuditJson(
+    JSON.stringify({ error: { code: 'ENOAUDIT', summary: 'Not implemented on Artifactory' } })
+  );
+  assert.ok(corpErr.auditEndpointError?.includes('ENOAUDIT'));
 });

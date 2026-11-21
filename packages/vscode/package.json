@@ -2,7 +2,7 @@
   "name": "archpilot-studio",
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "Pallattu",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -53,6 +53,11 @@
           "type": "string",
           "default": "Standard ($3/1M)",
           "description": "Display label for the selected model pricing tier."
+        },
+        "archpilot.npmAuditRegistry": {
+          "type": "string",
+          "default": "",
+          "description": "Optional npm registry URL for dependency CVE audits (e.g., https://registry.npmjs.org). Leave empty to use your default registry with automatic fallback to public npmjs.org."
         }
       }
     },
@@ -169,6 +174,11 @@
         "command": "archpilot.generatePrBrief",
         "title": "Generate PR & QA Handoff Brief",
         "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "archpilot.auditDependencies",
+        "title": "Audit Dependency Vulnerabilities (CVEs)",
+        "icon": "$(shield)"
       }
     ],
     "menus": {
@@ -209,6 +219,11 @@
           "command": "archpilot.generatePrBrief",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
           "group": "0_view@3"
+        },
+        {
+          "command": "archpilot.auditDependencies",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "0_view@4"
         },
         {
           "command": "archpilot.autoFixProject",
@@ -309,10 +324,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archpilot/core": "0.4.0"
+    "@archpilot/core": "0.5.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
-    "esbuild": "^0.24.2"
+    "esbuild": "^0.25.5"
   }
 }

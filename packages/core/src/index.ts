@@ -2,6 +2,13 @@ export { auditRepository } from './audit.js';
 export { analyzeBlastRadius } from './blastRadius.js';
 export type { BlastRadiusReport } from './blastRadius.js';
 export { generatePrHandoffBrief } from './prBrief.js';
+export { parseNpmAuditJson, runDependencyAudit } from './depAudit.js';
+export type {
+  DependencyAuditOptions,
+  DependencyAuditReport,
+  DependencyVulnerability,
+  DepSeverity,
+} from './depAudit.js';
 export { buildModuleGraph } from './graph.js';
 export type { ModuleGraphData, ModuleGraphEdge, ModuleGraphNode } from './graph.js';
 export {
