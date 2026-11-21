@@ -317,7 +317,14 @@ export function activate(context: vscode.ExtensionContext): void {
         placeHolder: 'Select any changed or impacted file to open it',
       });
       if (picked?.filePath) {
-        await openFileInEditor(path.join(audit.rootDir, picked.filePath));
+        const absPath = path.join(audit.rootDir, picked.filePath);
+        if (await exists(absPath)) {
+          await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(absPath));
+        } else {
+          void vscode.window.showInformationMessage(
+            `"${picked.filePath}" no longer exists on disk (deleted or moved in Git).`
+          );
+        }
       }
     }),
 

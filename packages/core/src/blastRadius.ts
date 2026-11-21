@@ -21,7 +21,7 @@ export interface BlastRadiusReport {
 
 async function detectGitChangedFiles(rootDir: string): Promise<string[]> {
   try {
-    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], {
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain', '-uall'], {
       cwd: rootDir,
     });
     const dirty = stdout
@@ -30,9 +30,11 @@ async function detectGitChangedFiles(rootDir: string): Promise<string[]> {
       .map((line) => {
         const raw = line.slice(3).trim();
         const arrowIdx = raw.indexOf(' -> ');
-        return toPosix(arrowIdx !== -1 ? raw.slice(arrowIdx + 4) : raw);
+        const picked = arrowIdx !== -1 ? raw.slice(arrowIdx + 4) : raw;
+        const unquoted = picked.replace(/^"(.*)"$/, '$1');
+        return toPosix(unquoted);
       })
-      .filter(Boolean);
+      .filter((p) => Boolean(p) && !p.endsWith('/'));
 
     if (dirty.length > 0) {
       return Array.from(new Set(dirty));
@@ -46,8 +48,8 @@ async function detectGitChangedFiles(rootDir: string): Promise<string[]> {
       new Set(
         diffOut.stdout
           .split(/\r?\n/)
-          .map((l) => toPosix(l.trim()))
-          .filter(Boolean)
+          .map((l) => toPosix(l.trim().replace(/^"(.*)"$/, '$1')))
+          .filter((p) => Boolean(p) && !p.endsWith('/'))
       )
     );
   } catch {
