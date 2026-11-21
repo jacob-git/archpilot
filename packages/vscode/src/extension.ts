@@ -10,295 +10,15 @@ import {
   generateFixPrompt,
   generateGitignore,
   generateReadmeBadge,
-  type AuditReport,
-  type CategoryScore,
   type Finding,
 } from '@archpilot/core';
-
-interface FolderAudit {
-  name: string;
-  rootDir: string;
-  report: AuditReport;
-}
-
-type TreeNode =
-  | { kind: 'folder'; audit: FolderAudit }
-  | { kind: 'summary'; audit: FolderAudit }
-  | { kind: 'tokenCost'; audit: FolderAudit }
-  | { kind: 'category'; category: CategoryScore; audit: FolderAudit }
-  | { kind: 'finding'; finding: Finding; audit: FolderAudit };
-
-const DETERMINISTIC_FIXABLE_RULES = new Set([
-  'missing-agent-instructions',
-  'no-boundary-rules',
-  'missing-gitignore',
-]);
-
-function findingContextValue(finding: Finding): string {
-  const fixable = DETERMINISTIC_FIXABLE_RULES.has(finding.id) ? '.fixable' : '';
-  const hasFile = finding.file ? '.file' : '';
-  return `archpilot.finding${fixable}${hasFile}`;
-}
-
-function formatStackTags(report: AuditReport): string {
-  const tags = [
-    ...report.detectedStack.languages,
-    ...report.detectedStack.frameworks,
-    ...report.detectedStack.capabilities,
-  ];
-  return tags.length > 0 ? tags.join(' · ') : 'generic';
-}
-
-function formatTokenLine(report: AuditReport): string {
-  const tf = report.tokenFootprint;
-  const sinks =
-    tf.tokenSinks.length > 0
-      ? `${tf.tokenSinks.length} token sinks (~${tf.totalSinkTokens.toLocaleString('en-US')} tokens)`
-      : '0 unignored token sinks';
-  return `~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tokens/turn · ${sinks}`;
-}
-
-function estimateModelRateUsd(idOrName: string): number {
-  const s = idOrName.toLowerCase();
-  if (s.includes('opus')) return 15;
-  if (s.includes('o1-pro')) return 15;
-  if (s.includes('haiku')) return 0.8;
-  if (s.includes('flash') || s.includes('mini') || s.includes('nano') || s.includes('lite')) {
-    return 0.3;
-  }
-  if (s.includes('sonnet')) return 3;
-  if (s.includes('gpt-4.1')) return 2;
-  if (s.includes('gpt-4o')) return 2.5;
-  if (s.includes('gpt-5') || s.includes('gpt-6') || /\bo[134]\b/.test(s)) return 5;
-  if (s.includes('gemini') && s.includes('pro')) return 1.25;
-  return 3;
-}
-
-interface LiveChatModel {
-  id: string;
-  name?: string;
-  family?: string;
-  vendor?: string;
-}
-
-async function getDetectedChatModels(): Promise<LiveChatModel[]> {
-  try {
-    const lm = (
-      vscode as unknown as {
-        lm?: { selectChatModels?: () => Promise<LiveChatModel[]> };
-      }
-    ).lm;
-    if (!lm?.selectChatModels) return [];
-    const models = await lm.selectChatModels();
-    return Array.isArray(models) ? models : [];
-  } catch {
-    return [];
-  }
-}
-
-class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
-  private readonly _onDidChangeTreeData = new vscode.EventEmitter<TreeNode | undefined>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-  private audits: FolderAudit[] = [];
-
-  setAudits(audits: FolderAudit[]): void {
-    this.audits = audits;
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
-  getAudits(): FolderAudit[] {
-    return this.audits;
-  }
-
-  getTreeItem(node: TreeNode): vscode.TreeItem {
-    if (node.kind === 'folder') {
-      const { name, report } = node.audit;
-      const item = new vscode.TreeItem(
-        `${name} — ${report.overallScore}/100 (Grade ${report.grade})`,
-        vscode.TreeItemCollapsibleState.Expanded
-      );
-      item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
-      item.tooltip = `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\n${report.summary.filesScanned} files scanned in ${report.summary.durationMs}ms\nRight-click for actions`;
-      item.iconPath = new vscode.ThemeIcon('folder');
-      item.contextValue =
-        report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
-      return item;
-    }
-
-    if (node.kind === 'summary') {
-      const { report } = node.audit;
-      const item = new vscode.TreeItem(
-        `Overall Score: ${report.overallScore}/100 (Grade ${report.grade})`,
-        vscode.TreeItemCollapsibleState.None
-      );
-      item.description = `${report.summary.errors}E · ${report.summary.warnings}W · ${report.summary.infos}I`;
-      item.tooltip =
-        report.findings.length > 0
-          ? `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nRight-click to Auto-Fix, Copy AI Fix Prompt, or Copy Badge`
-          : `${node.audit.rootDir}\nStack: ${formatStackTags(report)}\nTokens: ${formatTokenLine(report)}\nAll checks passed! Right-click to Copy README Badge`;
-      item.iconPath = new vscode.ThemeIcon('shield');
-      item.contextValue =
-        report.findings.length > 0 ? 'archpilot.project.hasIssues' : 'archpilot.project.clean';
-      return item;
-    }
-
-    if (node.kind === 'tokenCost') {
-      const { report } = node.audit;
-      const tf = report.tokenFootprint;
-      const c = tf.costEstimate;
-      const totalMonthly = c.alwaysOnMonthlyUsd + c.sinkMonthlyRiskUsd;
-      const hasSavings = c.potentialMonthlySavingsUsd > 0;
-      const label = hasSavings
-        ? `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev (Save ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo)`
-        : `Token Cost: ~$${totalMonthly.toFixed(2)}/mo/dev`;
-
-      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-      item.description = `~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tok/turn · ${c.modelLabel}`;
-      item.iconPath = new vscode.ThemeIcon(
-        hasSavings ? 'flame' : 'pulse',
-        hasSavings
-          ? new vscode.ThemeColor('problemsWarningIcon.foreground')
-          : new vscode.ThemeColor('testing.iconPassed')
-      );
-      item.contextValue = hasSavings ? 'archpilot.tokenCost.hasSavings' : 'archpilot.tokenCost.clean';
-      item.command = {
-        command: 'archpilot.selectModelPreset',
-        title: 'Select Model Pricing Preset',
-      };
-
-      const calcTier = (rate: number) =>
-        (
-          (tf.alwaysOnInstructionTokens * c.turnsPerMonth + tf.totalSinkTokens * 110) *
-          rate /
-          1_000_000
-        ).toFixed(2);
-
-      item.tooltip = [
-        `Model Tier: ${c.modelLabel} (${c.turnsPerMonth.toLocaleString('en-US')} turns/mo)`,
-        `Always-on instructions: ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tok/turn (~$${c.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev)`,
-        `Unignored token sinks: ${tf.tokenSinks.length} files / ~${tf.totalSinkTokens.toLocaleString('en-US')} tokens (~$${c.sinkMonthlyRiskUsd.toFixed(2)}/mo risk)`,
-        hasSavings
-          ? `Potential savings: ~$${c.potentialMonthlySavingsUsd.toFixed(2)}/mo/dev (~$${(c.potentialMonthlySavingsUsd * 10).toFixed(0)}/mo for a 10-dev team)`
-          : 'No unignored token sinks detected.',
-        '',
-        '3-Tier Monthly Cost Comparison (per dev):',
-        `• Fast / Flash ($0.30/1M): ~$${calcTier(0.3)}/mo`,
-        `• Standard / Sonnet / GPT-4o ($3/1M): ~$${calcTier(3)}/mo`,
-        `• Frontier / Opus ($15/1M): ~$${calcTier(15)}/mo`,
-        '',
-        'Click to change model pricing preset · Right-click to Reduce AI Token Cost',
-      ].join('\n');
-      return item;
-    }
-
-    if (node.kind === 'category') {
-      const hasFindings = node.category.findings.length > 0;
-      const item = new vscode.TreeItem(
-        `${node.category.label} (${node.category.score}/100)`,
-        hasFindings
-          ? vscode.TreeItemCollapsibleState.Expanded
-          : vscode.TreeItemCollapsibleState.None
-      );
-      item.iconPath = new vscode.ThemeIcon(
-        hasFindings ? 'warning' : 'pass',
-        hasFindings
-          ? new vscode.ThemeColor('problemsWarningIcon.foreground')
-          : new vscode.ThemeColor('testing.iconPassed')
-      );
-      return item;
-    }
-
-    const { finding, audit } = node;
-    const item = new vscode.TreeItem(finding.message, vscode.TreeItemCollapsibleState.None);
-    item.contextValue = findingContextValue(finding);
-    const locationText = finding.file
-      ? `${finding.file}${finding.line ? `:${finding.line}` : ''}`
-      : undefined;
-    item.tooltip = [
-      locationText,
-      finding.message,
-      finding.suggestion ? `Fix: ${finding.suggestion}` : undefined,
-      'Right-click for Quick Fix, Ignore, or Copy AI Fix Prompt',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    item.description = finding.file
-      ? `${path.basename(finding.file)}${finding.line ? `:${finding.line}` : ''}`
-      : finding.id;
-
-    if (finding.severity === 'error') {
-      item.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('problemsErrorIcon.foreground'));
-    } else if (finding.severity === 'warning') {
-      item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
-    } else {
-      item.iconPath = new vscode.ThemeIcon('info', new vscode.ThemeColor('problemsInfoIcon.foreground'));
-    }
-
-    if (finding.file) {
-      const targetUri = vscode.Uri.file(path.join(audit.rootDir, finding.file));
-      const lineIdx = Math.max(0, (finding.line ?? 1) - 1);
-      item.command = {
-        command: 'vscode.open',
-        title: 'Open File',
-        arguments: [
-          targetUri,
-          { selection: new vscode.Range(lineIdx, 0, lineIdx, 0) },
-        ],
-      };
-    }
-
-    return item;
-  }
-
-  getChildren(element?: TreeNode): TreeNode[] {
-    if (this.audits.length === 0) {
-      return [];
-    }
-
-    if (!element) {
-      if (this.audits.length === 1) {
-        const single = this.audits[0];
-        return [
-          { kind: 'summary', audit: single },
-          { kind: 'tokenCost', audit: single },
-          ...single.report.categories.map(
-            (category): TreeNode => ({
-              kind: 'category',
-              category,
-              audit: single,
-            })
-          ),
-        ];
-      }
-      return this.audits.map((audit): TreeNode => ({ kind: 'folder', audit }));
-    }
-
-    if (element.kind === 'folder') {
-      return [
-        { kind: 'tokenCost', audit: element.audit },
-        ...element.audit.report.categories.map(
-          (category): TreeNode => ({
-            kind: 'category',
-            category,
-            audit: element.audit,
-          })
-        ),
-      ];
-    }
-
-    if (element.kind === 'category') {
-      return element.category.findings.map(
-        (finding): TreeNode => ({
-          kind: 'finding',
-          finding,
-          audit: element.audit,
-        })
-      );
-    }
-
-    return [];
-  }
-}
+import { ArchPilotTreeProvider } from './treeProvider.js';
+import {
+  estimateModelRateUsd,
+  getDetectedChatModels,
+  type FolderAudit,
+  type TreeNode,
+} from './types.js';
 
 function toVsCodeSeverity(sev: Finding['severity']): vscode.DiagnosticSeverity {
   if (sev === 'error') return vscode.DiagnosticSeverity.Error;
@@ -308,12 +28,8 @@ function toVsCodeSeverity(sev: Finding['severity']): vscode.DiagnosticSeverity {
 
 async function pickWorkspaceFolder(placeHolder: string): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    return undefined;
-  }
-  if (folders.length === 1) {
-    return folders[0].uri.fsPath;
-  }
+  if (!folders || folders.length === 0) return undefined;
+  if (folders.length === 1) return folders[0].uri.fsPath;
   const picked = await vscode.window.showQuickPick(
     folders.map((f) => ({
       label: f.name,
@@ -326,8 +42,7 @@ async function pickWorkspaceFolder(placeHolder: string): Promise<string | undefi
 }
 
 function rootDirFromNode(node?: TreeNode): string | undefined {
-  if (!node) return undefined;
-  return node.audit.rootDir;
+  return node?.audit.rootDir;
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -369,7 +84,6 @@ async function addIgnoreToConfig(rootDir: string, relPath: string): Promise<void
     currentIgnore.push(relPath);
   }
   configObj.ignore = currentIgnore;
-
   await writeFile(configPath, JSON.stringify(configObj, null, 2) + '\n', 'utf8');
 }
 
@@ -535,8 +249,7 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window.showInformationMessage('AGENTS.md already exists in this folder.');
         return;
       }
-      const content = await generateAgentsMd(rootDir);
-      await writeFile(target, content, 'utf8');
+      await writeFile(target, await generateAgentsMd(rootDir), 'utf8');
       await openFileInEditor(target);
       await runAudit();
     }),
@@ -554,6 +267,20 @@ export function activate(context: vscode.ExtensionContext): void {
       await writeFile(target, generateArchPilotConfig(), 'utf8');
       await openFileInEditor(target);
       await runAudit();
+    }),
+
+    vscode.commands.registerCommand('archpilot.generateArchMap', async (node?: TreeNode) => {
+      const rootDir =
+        rootDirFromNode(node) ??
+        (await pickWorkspaceFolder('Select project folder for ARCHMAP.md'));
+      if (!rootDir) return;
+      const content = await generateArchMap(rootDir);
+      const target = path.join(rootDir, 'ARCHMAP.md');
+      await writeFile(target, content, 'utf8');
+      await openFileInEditor(target);
+      void vscode.window.showInformationMessage(
+        `Generated ARCHMAP.md (~${Math.ceil(content.length / 4)} tokens) so AI agents can locate modules in 1 read.`
+      );
     }),
 
     vscode.commands.registerCommand('archpilot.autoFixProject', async (node?: TreeNode) => {
@@ -655,20 +382,6 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }),
 
-    vscode.commands.registerCommand('archpilot.generateArchMap', async (node?: TreeNode) => {
-      const rootDir =
-        rootDirFromNode(node) ??
-        (await pickWorkspaceFolder('Select project folder for ARCHMAP.md'));
-      if (!rootDir) return;
-      const content = await generateArchMap(rootDir);
-      const target = path.join(rootDir, 'ARCHMAP.md');
-      await writeFile(target, content, 'utf8');
-      await openFileInEditor(target);
-      void vscode.window.showInformationMessage(
-        `Generated ARCHMAP.md (~${Math.ceil(content.length / 4)} tokens) so AI agents can locate modules in 1 read.`
-      );
-    }),
-
     vscode.commands.registerCommand('archpilot.selectModelPreset', async () => {
       interface PricingPickItem extends vscode.QuickPickItem {
         rate: number;
@@ -761,6 +474,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const cfg = vscode.workspace.getConfiguration('archpilot');
       await cfg.update('costPerMillionInputTokens', rate, vscode.ConfigurationTarget.Global);
       await cfg.update('modelPresetLabel', shortLabel, vscode.ConfigurationTarget.Global);
+      updateActiveFileTokens(vscode.window.activeTextEditor);
       await runAudit();
     }),
 
@@ -792,7 +506,7 @@ export function activate(context: vscode.ExtensionContext): void {
       } else if (hasBloatedInstructions) {
         const msg =
           addedCount > 0
-            ? `Added ${addedCount} token sinks to .aiignore. Your always-on instructions are still ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn — copy a prompt to compress them?`
+            ? `Added ${addedCount} large files to .aiignore & .cursorignore. Your always-on instructions are still ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn — copy a prompt to compress them?`
             : `Your always-on instructions are ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn (~$${tf.costEstimate.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev). Copy a prompt to compress them by 50%?`;
         const choice = await vscode.window.showInformationMessage(msg, 'Copy Compression Prompt');
         if (choice === 'Copy Compression Prompt') {
@@ -803,7 +517,7 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       } else {
         void vscode.window.showInformationMessage(
-          `${audit.name} already has 0 unignored token sinks and lean instruction tokens.`
+          `${audit.name} already has 0 unignored large files and lean instruction tokens.`
         );
       }
     }),
