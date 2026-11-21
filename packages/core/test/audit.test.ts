@@ -6,10 +6,13 @@ import path from 'node:path';
 import {
   analyzeBlastRadius,
   auditRepository,
+  buildArchitectureDiagram,
   formatHtmlReport,
   formatMarkdown,
   formatSarif,
+  generateArchitectureMd,
   generateArchMap,
+  generateMermaidDiagram,
   generateSmartArchPilotConfig,
 } from '../src/index.js';
 
@@ -480,6 +483,33 @@ test('detects Spectral-style OpenAPI issues, REST URI verbs, and Spring Boot NFR
     assert.ok(report.findings.some((f) => f.id === 'spring-resttemplate-no-timeout'));
     assert.ok(report.findings.some((f) => f.id === 'spring-unbounded-findall'));
     assert.ok(report.findings.some((f) => f.id === 'spring-field-autowired'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('generates living architecture diagram with external systems and valid Mermaid/ARCHITECTURE.md', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'package.json': JSON.stringify({ name: 'sys-app', dependencies: { openai: '^4.0.0', pg: '^8.0.0' } }),
+    'src/api/orders.ts': "import { saveOrder } from '../db/orders.js';\nimport OpenAI from 'openai';\nexport const run = () => [saveOrder, OpenAI];\n",
+    'src/db/orders.ts': "import { Pool } from 'pg';\nexport const saveOrder = () => new Pool();\n",
+  });
+
+  try {
+    const diagram = await buildArchitectureDiagram(dir);
+    assert.ok(diagram.externalSystems.some((e) => e.label === 'PostgreSQL'));
+    assert.ok(diagram.externalSystems.some((e) => e.label === 'OpenAI API'));
+
+    const mermaid = generateMermaidDiagram(diagram);
+    assert.ok(mermaid.startsWith('flowchart LR'));
+    assert.ok(mermaid.includes('ext_postgres'));
+    assert.ok(mermaid.includes('ext_openai'));
+
+    const archMd = await generateArchitectureMd(dir);
+    assert.ok(archMd.includes('# ARCHITECTURE.md'));
+    assert.ok(archMd.includes('```mermaid'));
+    assert.ok(archMd.includes('External Integrations'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -5,6 +5,7 @@ import {
   auditRepository,
   DEFAULT_CONFIG,
   generateAgentsMd,
+  generateArchitectureMd,
   generateArchMap,
   generateFixPrompt,
   generateGitignore,
@@ -340,6 +341,20 @@ export function activate(context: vscode.ExtensionContext): void {
       await openFileInEditor(target);
       void vscode.window.showInformationMessage(
         `Generated ARCHMAP.md (~${Math.ceil(content.length / 4)} tokens) so AI agents can locate modules in 1 read.`
+      );
+    }),
+
+    vscode.commands.registerCommand('archpilot.generateArchitectureMd', async (node?: TreeNode) => {
+      const rootDir =
+        rootDirFromNode(node) ??
+        (await pickWorkspaceFolder('Select project folder for ARCHITECTURE.md'));
+      if (!rootDir) return;
+      const md = await generateArchitectureMd(rootDir);
+      const target = path.join(rootDir, 'ARCHITECTURE.md');
+      await writeFile(target, md, 'utf8');
+      await openFileInEditor(target);
+      void vscode.window.showInformationMessage(
+        'Generated ARCHITECTURE.md with live Mermaid system & external integrations diagram.'
       );
     }),
 

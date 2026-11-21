@@ -3,8 +3,10 @@ import path from 'node:path';
 import {
   analyzeBlastRadius,
   auditRepository,
+  buildArchitectureDiagram,
   generateArchMap,
   generateFixPrompt,
+  generateMermaidDiagram,
 } from '@archpilot/core';
 
 interface JsonRpcRequest {
@@ -95,6 +97,20 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'get_architecture_diagram',
+    description:
+      'Generate a living Mermaid flowchart diagram showing internal modules, dependencies, violations, and detected external systems (DBs, queues, cloud, AI APIs).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+      },
+    },
+  },
 ];
 
 function send(msg: Record<string, unknown>): void {
@@ -170,6 +186,13 @@ async function handleToolCall(
     const br = await analyzeBlastRadius(repoPath, files);
     return {
       content: [{ type: 'text', text: JSON.stringify(br, null, 2) }],
+    };
+  }
+
+  if (name === 'get_architecture_diagram') {
+    const data = await buildArchitectureDiagram(repoPath);
+    return {
+      content: [{ type: 'text', text: generateMermaidDiagram(data) }],
     };
   }
 

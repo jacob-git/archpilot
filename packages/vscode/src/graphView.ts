@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { buildModuleGraph, type ModuleGraphData } from '@archpilot/core';
+import { writeFile } from 'node:fs/promises';
+import {
+  buildArchitectureDiagram,
+  generateArchitectureMd,
+  generateMermaidDiagram,
+  type ArchitectureDiagramData,
+} from '@archpilot/core';
 
 function escapeHtml(str: string): string {
   return str
@@ -10,8 +16,12 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
-  const payload = JSON.stringify(data).replace(/</g, '\\u003c');
+function renderWebviewHtml(diagram: ArchitectureDiagramData, scoreLabel: string): string {
+  const data = diagram.graph;
+  const payload = JSON.stringify({
+    ...data,
+    externalSystems: diagram.externalSystems,
+  }).replace(/</g, '\\u003c');
   const totalTokens = data.nodes.reduce((acc, n) => acc + n.estimatedTokens, 0);
   const violationEdges = data.edges.filter((e) => e.isViolation).length;
 
@@ -131,12 +141,15 @@ function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
     <div class="title-group">
       <span class="title">ArchPilot Graph · ${escapeHtml(data.repoName)}</span>
       <span class="pill good">${escapeHtml(scoreLabel)}</span>
-      <span class="pill">${data.nodes.length} modules · ${data.edges.length} links</span>
+      <span class="pill">${data.nodes.length} modules · ${data.edges.length} links${diagram.externalSystems.length > 0 ? ` · ${diagram.externalSystems.length} external` : ''}</span>
       <span class="pill">~${totalTokens.toLocaleString('en-US')} code tokens</span>
       ${data.cycles.length > 0 ? `<span class="pill bad">${data.cycles.length} circular</span>` : ''}
       ${violationEdges > 0 ? `<span class="pill bad">${violationEdges} boundary violations</span>` : ''}
     </div>
     <div class="actions">
+      <button id="copyMermaidBtn">Copy Mermaid</button>
+      <button id="exportMdBtn">Export ARCHITECTURE.md</button>
+      <button id="exportSvgBtn">Export SVG</button>
       <button id="resetBtn">Reset View</button>
       <button id="refreshBtn">Refresh</button>
     </div>
@@ -159,6 +172,7 @@ function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
       </svg>
       <div class="legend">
         <span><span class="dot" style="background:#38bdf8"></span>Clean Module</span>
+        <span><span class="dot" style="background:#a78bfa"></span>External System / DB / API</span>
         <span><span class="dot" style="background:#fbbf24"></span>Token-Heavy (&gt;25K tok)</span>
         <span><span class="dot" style="background:#f87171"></span>Cycle / Boundary Violation</span>
       </div>
@@ -195,6 +209,12 @@ function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
       x: 80 + col * 240 + (row % 2 === 1 ? 60 : 0),
       y: 70 + row * 125,
     });
+  });
+
+  // Place external systems neatly along the right column
+  const extX = 140 + cols * 240;
+  (data.externalSystems || []).forEach((ext, idx) => {
+    positions.set(ext.id, { x: extX, y: 70 + idx * 105 });
   });
 
   let scale = 1;
@@ -239,6 +259,58 @@ function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
       if (isBad) pathEl.setAttribute('stroke-dasharray', '6 4');
       pathEl.setAttribute('marker-end', isBad ? 'url(#arrow-bad)' : 'url(#arrow-clean)');
       edgesLayer.appendChild(pathEl);
+    }
+
+    // Draw external system edges & nodes
+    for (const ext of data.externalSystems || []) {
+      const p2 = positions.get(ext.id);
+      if (!p2) continue;
+      for (const modId of ext.usedByModules) {
+        const p1 = positions.get(modId);
+        if (!p1) continue;
+        const x1 = p1.x + NODE_W;
+        const y1 = p1.y + NODE_H / 2;
+        const x2 = p2.x;
+        const y2 = p2.y + 26;
+        const cx = (x1 + x2) / 2;
+        const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathEl.setAttribute('d', 'M ' + x1 + ' ' + y1 + ' Q ' + cx + ' ' + y1 + ' ' + x2 + ' ' + y2);
+        pathEl.setAttribute('fill', 'none');
+        pathEl.setAttribute('stroke', '#a78bfa');
+        pathEl.setAttribute('stroke-opacity', '0.65');
+        pathEl.setAttribute('stroke-width', '1.6');
+        pathEl.setAttribute('stroke-dasharray', '4 3');
+        edgesLayer.appendChild(pathEl);
+      }
+
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', 'translate(' + p2.x + ',' + p2.y + ')');
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('width', '175');
+      rect.setAttribute('height', '52');
+      rect.setAttribute('rx', '26');
+      rect.setAttribute('fill', '#1e1b4b');
+      rect.setAttribute('stroke', '#a78bfa');
+      rect.setAttribute('stroke-width', '1.5');
+      g.appendChild(rect);
+
+      const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      title.setAttribute('x', '16');
+      title.setAttribute('y', '22');
+      title.setAttribute('fill', '#f5f3ff');
+      title.setAttribute('font-size', '12');
+      title.setAttribute('font-weight', '600');
+      title.textContent = ext.label;
+      g.appendChild(title);
+
+      const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      sub.setAttribute('x', '16');
+      sub.setAttribute('y', '39');
+      sub.setAttribute('fill', '#c4b5fd');
+      sub.setAttribute('font-size', '10');
+      sub.textContent = ext.kind + ' · ' + ext.usedByModules.length + ' module(s)';
+      g.appendChild(sub);
+      nodesLayer.appendChild(g);
     }
 
     for (const n of data.nodes) {
@@ -425,6 +497,17 @@ function renderWebviewHtml(data: ModuleGraphData, scoreLabel: string): string {
     applyTransform();
   }, { passive: false });
 
+  document.getElementById('copyMermaidBtn').addEventListener('click', () => {
+    vscode.postMessage({ type: 'copyMermaid' });
+  });
+  document.getElementById('exportMdBtn').addEventListener('click', () => {
+    vscode.postMessage({ type: 'exportMd' });
+  });
+  document.getElementById('exportSvgBtn').addEventListener('click', () => {
+    const serializer = new XMLSerializer();
+    const svgText = serializer.serializeToString(svg);
+    vscode.postMessage({ type: 'exportSvg', svg: svgText });
+  });
   document.getElementById('resetBtn').addEventListener('click', () => {
     scale = 1; tx = 0; ty = 0;
     applyTransform();
@@ -452,20 +535,50 @@ export async function openArchitectureGraph(
     { enableScripts: true, retainContextWhenHidden: true }
   );
 
+  let latestDiagram: ArchitectureDiagramData | undefined;
+
   const load = async (): Promise<void> => {
-    const graphData = await buildModuleGraph(rootDir);
-    panel.webview.html = renderWebviewHtml(graphData, scoreLabel);
+    latestDiagram = await buildArchitectureDiagram(rootDir);
+    panel.webview.html = renderWebviewHtml(latestDiagram, scoreLabel);
   };
 
-  panel.webview.onDidReceiveMessage(async (msg: { type?: string; file?: string }) => {
-    if (msg.type === 'refresh') {
-      await load();
-    } else if (msg.type === 'openFile' && msg.file) {
-      const target = vscode.Uri.file(path.join(rootDir, msg.file));
-      const doc = await vscode.workspace.openTextDocument(target);
-      await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+  panel.webview.onDidReceiveMessage(
+    async (msg: { type?: string; file?: string; svg?: string }) => {
+      if (msg.type === 'refresh') {
+        await load();
+      } else if (msg.type === 'openFile' && msg.file) {
+        const target = vscode.Uri.file(path.join(rootDir, msg.file));
+        const doc = await vscode.workspace.openTextDocument(target);
+        await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+      } else if (msg.type === 'copyMermaid' && latestDiagram) {
+        const mermaid = generateMermaidDiagram(latestDiagram);
+        await vscode.env.clipboard.writeText(mermaid);
+        void vscode.window.showInformationMessage(
+          'Copied Mermaid architecture diagram to clipboard — paste into GitHub, GitLab, Notion, or Confluence.'
+        );
+      } else if (msg.type === 'exportMd') {
+        const md = await generateArchitectureMd(rootDir);
+        const target = path.join(rootDir, 'ARCHITECTURE.md');
+        await writeFile(target, md, 'utf8');
+        const doc = await vscode.workspace.openTextDocument(target);
+        await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        void vscode.window.showInformationMessage('Exported live Mermaid diagram to ARCHITECTURE.md.');
+      } else if (msg.type === 'exportSvg' && msg.svg) {
+        const defaultUri = vscode.Uri.file(path.join(rootDir, `${repoName}-architecture.svg`));
+        const saveUri = await vscode.window.showSaveDialog({
+          defaultUri,
+          filters: { 'SVG Image': ['svg'] },
+          title: 'Export Architecture Diagram as SVG',
+        });
+        if (saveUri) {
+          await writeFile(saveUri.fsPath, msg.svg, 'utf8');
+          void vscode.window.showInformationMessage(
+            `Exported SVG diagram to ${path.basename(saveUri.fsPath)}.`
+          );
+        }
+      }
     }
-  });
+  );
 
   await load();
 }

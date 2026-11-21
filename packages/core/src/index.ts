@@ -3,6 +3,16 @@ export { analyzeBlastRadius } from './blastRadius.js';
 export type { BlastRadiusReport } from './blastRadius.js';
 export { buildModuleGraph } from './graph.js';
 export type { ModuleGraphData, ModuleGraphEdge, ModuleGraphNode } from './graph.js';
+export {
+  buildArchitectureDiagram,
+  generateArchitectureMd,
+  generateMermaidDiagram,
+} from './diagrams.js';
+export type {
+  ArchitectureDiagramData,
+  ExternalSystemKind,
+  ExternalSystemNode,
+} from './diagrams.js';
 export { loadConfig, DEFAULT_CONFIG } from './config.js';
 export {
   generateAgentsMd,

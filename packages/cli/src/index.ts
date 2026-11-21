@@ -4,11 +4,14 @@ import path from 'node:path';
 import {
   analyzeBlastRadius,
   auditRepository,
+  buildArchitectureDiagram,
   formatHtmlReport,
   formatMarkdown,
   formatSarif,
   generateAgentsMd,
+  generateArchitectureMd,
   generateArchMap,
+  generateMermaidDiagram,
   generateSmartArchPilotConfig,
   type AuditReport,
   type Severity,
@@ -133,6 +136,8 @@ async function main(): Promise<void> {
   let format: 'text' | 'json' | 'sarif' | 'markdown' | 'html' = 'text';
   let initMode = false;
   let mapMode = false;
+  let diagramMode = false;
+  let archMdMode = false;
   let diffMode = false;
   let failUnder: number | undefined;
 
@@ -155,6 +160,10 @@ async function main(): Promise<void> {
       initMode = true;
     } else if (arg === '--map') {
       mapMode = true;
+    } else if (arg === '--diagram') {
+      diagramMode = true;
+    } else if (arg === '--arch-md') {
+      archMdMode = true;
     } else if (arg === '--diff') {
       diffMode = true;
     } else if (arg === '--fail-under') {
@@ -171,6 +180,8 @@ Commands:
 Options:
   --init                       Generate starter AGENTS.md and smart archpilot.json
   --map                        Generate compact ARCHMAP.md repo index to save agent tokens
+  --diagram                    Output living Mermaid architecture diagram (modules + external systems)
+  --arch-md                    Generate ARCHITECTURE.md with living Mermaid diagram
   --diff                       Analyze git changed files, blast radius, and QA test gaps
   --format <fmt>               Output format: text | json | sarif | markdown | html (default: text)
   --json                       Alias for --format json
@@ -193,6 +204,17 @@ Options:
     const mapPath = path.join(resolved, 'ARCHMAP.md');
     await writeFile(mapPath, mapContent, 'utf8');
     console.log(`${GREEN}Generated ARCHMAP.md (~${Math.ceil(mapContent.length / 4)} tokens)${RESET}`);
+    return;
+  }
+  if (diagramMode) {
+    const diagramData = await buildArchitectureDiagram(resolved);
+    console.log(generateMermaidDiagram(diagramData));
+    return;
+  }
+  if (archMdMode) {
+    const md = await generateArchitectureMd(resolved);
+    await writeFile(path.join(resolved, 'ARCHITECTURE.md'), md, 'utf8');
+    console.log(`${GREEN}Generated ARCHITECTURE.md with live Mermaid diagram${RESET}`);
     return;
   }
   if (diffMode) {
