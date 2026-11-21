@@ -57,6 +57,44 @@ function formatTokenLine(report: AuditReport): string {
   return `~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} always-on tokens/turn · ${sinks}`;
 }
 
+function estimateModelRateUsd(idOrName: string): number {
+  const s = idOrName.toLowerCase();
+  if (s.includes('opus')) return 15;
+  if (s.includes('o1-pro')) return 15;
+  if (s.includes('haiku')) return 0.8;
+  if (s.includes('flash') || s.includes('mini') || s.includes('nano') || s.includes('lite')) {
+    return 0.3;
+  }
+  if (s.includes('sonnet')) return 3;
+  if (s.includes('gpt-4.1')) return 2;
+  if (s.includes('gpt-4o')) return 2.5;
+  if (s.includes('gpt-5') || s.includes('gpt-6') || /\bo[134]\b/.test(s)) return 5;
+  if (s.includes('gemini') && s.includes('pro')) return 1.25;
+  return 3;
+}
+
+interface LiveChatModel {
+  id: string;
+  name?: string;
+  family?: string;
+  vendor?: string;
+}
+
+async function getDetectedChatModels(): Promise<LiveChatModel[]> {
+  try {
+    const lm = (
+      vscode as unknown as {
+        lm?: { selectChatModels?: () => Promise<LiveChatModel[]> };
+      }
+    ).lm;
+    if (!lm?.selectChatModels) return [];
+    const models = await lm.selectChatModels();
+    return Array.isArray(models) ? models : [];
+  } catch {
+    return [];
+  }
+}
+
 class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -570,16 +608,80 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand('archpilot.selectModelPreset', async () => {
-      const presets = [
-        { label: 'Fast / Flash / Mini ($0.30/1M)', rate: 0.3, short: 'Fast ($0.30/1M)' },
-        { label: 'Standard / Sonnet / GPT-4o ($3/1M)', rate: 3, short: 'Standard ($3/1M)' },
-        { label: 'Frontier / Opus ($15/1M)', rate: 15, short: 'Frontier ($15/1M)' },
-        { label: 'Custom rate ($ per 1M input tokens)...', rate: -1, short: 'Custom' },
-      ];
-      const picked = await vscode.window.showQuickPick(presets, {
-        placeHolder: 'Select AI model pricing tier for monthly token cost estimates',
+      interface PricingPickItem extends vscode.QuickPickItem {
+        rate: number;
+        short: string;
+      }
+
+      const items: PricingPickItem[] = [];
+      const liveModels = await getDetectedChatModels();
+      const seen = new Set<string>();
+
+      if (liveModels.length > 0) {
+        items.push({
+          label: 'Detected in VS Code / Copilot',
+          kind: vscode.QuickPickItemKind.Separator,
+          rate: 0,
+          short: '',
+        });
+        for (const m of liveModels) {
+          const displayName = m.name || m.family || m.id;
+          const key = displayName.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const rate = estimateModelRateUsd(`${m.id} ${m.name ?? ''} ${m.family ?? ''}`);
+          items.push({
+            label: displayName,
+            description: `~$${rate}/1M input${m.vendor ? ` · ${m.vendor}` : ''}`,
+            rate,
+            short: `${displayName} ($${rate}/1M)`,
+          });
+        }
+      }
+
+      items.push(
+        {
+          label: 'General Pricing Tiers',
+          kind: vscode.QuickPickItemKind.Separator,
+          rate: 0,
+          short: '',
+        },
+        {
+          label: 'Fast / Flash / Mini',
+          description: '$0.30/1M input (Gemini Flash, GPT-4o-mini, o4-mini)',
+          rate: 0.3,
+          short: 'Fast ($0.30/1M)',
+        },
+        {
+          label: 'Standard / Sonnet / GPT-4o',
+          description: '$3/1M input (Claude Sonnet, GPT-4o, GPT-4.1)',
+          rate: 3,
+          short: 'Standard ($3/1M)',
+        },
+        {
+          label: 'High-Reasoning / GPT-5+ / o3',
+          description: '$5/1M input (GPT-5, GPT-6, o3)',
+          rate: 5,
+          short: 'Reasoning ($5/1M)',
+        },
+        {
+          label: 'Frontier / Opus',
+          description: '$15/1M input (Claude Opus)',
+          rate: 15,
+          short: 'Frontier ($15/1M)',
+        },
+        {
+          label: 'Custom rate...',
+          description: 'Enter any exact $ per 1M input token price',
+          rate: -1,
+          short: 'Custom',
+        }
+      );
+
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select a detected Copilot/VS Code model or pricing tier',
       });
-      if (!picked) return;
+      if (!picked || picked.kind === vscode.QuickPickItemKind.Separator) return;
 
       let rate = picked.rate;
       let shortLabel = picked.short;
