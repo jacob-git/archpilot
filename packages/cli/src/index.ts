@@ -252,7 +252,7 @@ Options:
             ? `breaking fix -> ${v.fixedVersion ?? 'major'}`
             : `safe fix -> ${v.fixedVersion ?? 'available'}`
           : 'no auto-fix';
-        console.log(`  [${v.severity.toUpperCase()}] ${v.packageName} (${fix}) — ${v.title}`);
+        console.log(`  [${v.severity.toUpperCase()}] ${v.packageName} (${fix}): ${v.title}`);
       }
       console.log('');
     }
@@ -291,7 +291,7 @@ Options:
       if (br.diffFindings.length > 0) {
         console.log(`\n${BOLD}Findings in Changed Files:${RESET}`);
         for (const f of br.diffFindings) {
-          console.log(`  ${severityTag(f.severity)} [${f.id}] ${DIM}${f.file ?? ''}${RESET} — ${f.message}`);
+          console.log(`  ${severityTag(f.severity)} [${f.id}] ${DIM}${f.file ?? ''}${RESET}: ${f.message}`);
         }
       }
       console.log('');

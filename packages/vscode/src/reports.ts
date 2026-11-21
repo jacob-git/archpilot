@@ -256,7 +256,7 @@ export async function runDependencyAuditPicker(audit: FolderAudit): Promise<void
       '',
       ...report.vulnerabilities.slice(0, 20).map(
         (v) =>
-          `- **[${v.severity.toUpperCase()}] \`${v.packageName}\`** (${v.ecosystem}): ${v.title}${v.fixedVersion ? ` — target version \`${v.fixedVersion}\`${v.isBreakingFix ? ' (major/breaking)' : ''}` : ''}`
+          `- **[${v.severity.toUpperCase()}] \`${v.packageName}\`** (${v.ecosystem}): ${v.title}${v.fixedVersion ? `: target version \`${v.fixedVersion}\`${v.isBreakingFix ? ' (major/breaking)' : ''}` : ''}`
       ),
     ].join('\n');
     try {

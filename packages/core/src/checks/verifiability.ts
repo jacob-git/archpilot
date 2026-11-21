@@ -56,7 +56,7 @@ export async function runVerifiabilityCheck(ctx: CheckContext): Promise<Finding[
               severity: 'warning',
               file: tf.relPath,
               line: i + 1,
-              message: 'Hardcoded sleep/timeout wait detected in test — common source of flaky CI.',
+              message: 'Hardcoded sleep/timeout wait detected in test: common source of flaky CI.',
               suggestion: 'Replace fixed sleeps with deterministic condition/locator waits or fake timers.',
             });
           }

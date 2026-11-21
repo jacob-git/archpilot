@@ -552,7 +552,7 @@ export function activate(context: vscode.ExtensionContext): void {
       } catch {
         await vscode.env.clipboard.writeText(prompt);
         void vscode.window.showInformationMessage(
-          `Copied AI Fix Prompt for ${label} to clipboard — paste it into your AI chat.`
+          `Copied AI Fix Prompt for ${label} to clipboard: paste it into your AI chat.`
         );
       }
     }),

@@ -152,7 +152,7 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
                 severity: 'warning',
                 file: file.relPath,
                 line: i + 1,
-                message: 'LLM API call detected inside a loop — can cause unexpected token/cost spikes.',
+                message: 'LLM API call detected inside a loop: can cause unexpected token/cost spikes.',
                 suggestion: 'Batch items, enforce a concurrency/cost cap, or cache repeated prompts outside the loop.',
               });
             }
@@ -374,7 +374,7 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
               severity: 'warning',
               file: file.relPath,
               line: i + 1,
-              message: 'Outbound HTTP call has no explicit timeout/AbortSignal — can hang workers under network stalls.',
+              message: 'Outbound HTTP call has no explicit timeout/AbortSignal: can hang workers under network stalls.',
               suggestion: 'Pass `signal: AbortSignal.timeout(10_000)` (JS/TS) or `timeout=10` (Python/axios).',
             });
           }
@@ -391,7 +391,7 @@ export async function runStackPacksCheck(ctx: CheckContext): Promise<Finding[]> 
             severity: 'warning',
             file: file.relPath,
             line: i + 1,
-            message: 'Empty catch/except block swallows errors silently — degrades production observability.',
+            message: 'Empty catch/except block swallows errors silently: degrades production observability.',
             suggestion: 'Log the error with context, rethrow, or explicitly document why ignoring is safe.',
           });
         }

@@ -67,7 +67,7 @@ export function formatMarkdown(report: AuditReport): string {
   ];
 
   const lines: string[] = [
-    `## ArchPilot Report — \`${repoName}\``,
+    `## ArchPilot Report: \`${repoName}\``,
     '',
     `**Overall Score:** **${report.overallScore}/100 (Grade ${report.grade})** · ${report.summary.errors} errors · ${report.summary.warnings} warnings · ${report.summary.infos} info`,
   ];
@@ -96,7 +96,7 @@ export function formatMarkdown(report: AuditReport): string {
     for (const f of report.findings.slice(0, 50)) {
       const icon = f.severity === 'error' ? '🔴' : f.severity === 'warning' ? '🟡' : '🔵';
       const loc = f.file ? ` \`${f.file}${f.line ? `:${f.line}` : ''}\`` : '';
-      lines.push(`- ${icon} **\`${f.id}\`**${loc} — ${f.message}`);
+      lines.push(`- ${icon} **\`${f.id}\`**${loc}: ${f.message}`);
       if (f.suggestion) {
         lines.push(`  - *Fix:* ${f.suggestion}`);
       }
@@ -167,7 +167,7 @@ export function formatHtmlReport(report: AuditReport): string {
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ArchPilot Executive Report — ${escapeHtml(repoName)}</title>
+<title>ArchPilot Executive Report: ${escapeHtml(repoName)}</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b1120; color: #e2e8f0; margin: 0; padding: 32px; }
   .container { max-width: 920px; margin: 0 auto; }
@@ -207,7 +207,7 @@ export function formatHtmlReport(report: AuditReport): string {
     <div class="card">
       <div class="header">
         <div>
-          <h1>ArchPilot Executive Audit Report — ${escapeHtml(repoName)}</h1>
+          <h1>ArchPilot Executive Audit Report: ${escapeHtml(repoName)}</h1>
           <div class="sub">${report.summary.filesScanned} files scanned in ${report.summary.durationMs}ms · Stack: ${escapeHtml(stackTags.join(' · ') || 'generic')}</div>
         </div>
         <div class="score-box">

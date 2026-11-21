@@ -148,7 +148,7 @@ export async function runSecurityCheck(ctx: CheckContext): Promise<Finding[]> {
             severity: 'error',
             file: file.relPath,
             line: i + 1,
-            message: 'String interpolation detected inside a SQL query — potential SQL injection.',
+            message: 'String interpolation detected inside a SQL query: potential SQL injection.',
             suggestion: 'Use parameterized queries / prepared statements instead of string interpolation.',
           });
         }
@@ -165,7 +165,7 @@ export async function runSecurityCheck(ctx: CheckContext): Promise<Finding[]> {
             severity: 'error',
             file: file.relPath,
             line: i + 1,
-            message: 'Shell command execution with dynamic input or `shell=True` — potential command injection.',
+            message: 'Shell command execution with dynamic input or `shell=True`: potential command injection.',
             suggestion: 'Use `execFile`/`spawn` (or `subprocess.run` with an argument array and `shell=False`).',
           });
         }
@@ -208,7 +208,7 @@ export async function runSecurityCheck(ctx: CheckContext): Promise<Finding[]> {
             severity: 'error',
             file: file.relPath,
             line: i + 1,
-            message: 'TLS certificate verification is disabled — vulnerable to MITM attacks.',
+            message: 'TLS certificate verification is disabled: vulnerable to MITM attacks.',
             suggestion: 'Keep TLS verification enabled and configure trusted CA certificates instead.',
           });
         }
@@ -226,7 +226,7 @@ export async function runSecurityCheck(ctx: CheckContext): Promise<Finding[]> {
             severity: 'warning',
             file: file.relPath,
             line: i + 1,
-            message: 'User request input appears directly inside a `system` prompt — prompt injection risk.',
+            message: 'User request input appears directly inside a `system` prompt: prompt injection risk.',
             suggestion: 'Keep system instructions static and pass untrusted user input only in `user` messages.',
           });
         }

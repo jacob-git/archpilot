@@ -7,7 +7,7 @@
 [![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero%20%7C%20100%25%20Offline-0f172a.svg)](#privacy--enterprise-ready)
 [![Languages](https://img.shields.io/badge/Languages-TS%20%7C%20JS%20%7C%20Java%20%7C%20Python%20%7C%20Go%20%7C%20Rust-6366f1.svg)](#what-archpilot-does)
 
-Instant, **100% offline & deterministic** architecture guardrails, living diagrams, AI token-cost optimization, security & CVE auditing, and 1-click PR/QA handoff briefs — in **VS Code, Cursor, Windsurf, CLI, and any CI/CD**.
+Instant, **100% offline & deterministic** architecture guardrails, living diagrams, AI token-cost optimization, security & CVE auditing, and 1-click PR/QA handoff briefs: in **VS Code, Cursor, Windsurf, CLI, and any CI/CD**.
 
 > **Zero API keys required. Zero telemetry. Works in air-gapped & MCP-restricted enterprises.**
 
@@ -113,7 +113,7 @@ pipelines:
   }
 }
 ```
-Exposes `audit_repo`, `check_boundaries`, `check_diff`, `get_arch_map`, `get_architecture_diagram`, `generate_pr_brief`, and `get_fix_prompt`. *(100% optional — zero penalty in MCP-restricted environments.)*
+Exposes `audit_repo`, `check_boundaries`, `check_diff`, `get_arch_map`, `get_architecture_diagram`, `generate_pr_brief`, and `get_fix_prompt`. *(100% optional: zero penalty in MCP-restricted environments.)*
 
 ---
 

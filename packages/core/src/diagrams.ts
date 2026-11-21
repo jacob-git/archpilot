@@ -179,7 +179,7 @@ export async function generateArchitectureMd(rootDir: string): Promise<string> {
   ];
 
   const lines: string[] = [
-    `# ARCHITECTURE.md — ${data.graph.repoName}`,
+    `# ARCHITECTURE.md: ${data.graph.repoName}`,
     '',
     '> Living architecture diagram generated deterministically by [ArchPilot](https://github.com/jacob-git/archpilot).',
     '',

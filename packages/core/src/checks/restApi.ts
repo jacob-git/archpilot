@@ -142,7 +142,7 @@ export async function runRestApiBestPracticesCheck(ctx: CheckContext): Promise<F
             severity: 'warning',
             file: file.relPath,
             line: i + 1,
-            message: `REST path \`${routePath}\` contains an RPC verb — use noun-based resources with HTTP methods.`,
+            message: `REST path \`${routePath}\` contains an RPC verb: use noun-based resources with HTTP methods.`,
             suggestion: 'Rename to a plural noun resource (e.g., `GET /orders` instead of `GET /getOrders`).',
           });
         } else {
@@ -198,7 +198,7 @@ export async function runRestApiBestPracticesCheck(ctx: CheckContext): Promise<F
             severity: 'warning',
             file: file.relPath,
             line: i + 1,
-            message: `Route \`${routeMatch[1]}\` embeds an RPC verb — prefer noun-based REST endpoints.`,
+            message: `Route \`${routeMatch[1]}\` embeds an RPC verb: prefer noun-based REST endpoints.`,
             suggestion: 'Use HTTP verbs (`GET`, `POST`, `DELETE`) on plural resource nouns instead.',
           });
         }
@@ -212,7 +212,7 @@ export async function runRestApiBestPracticesCheck(ctx: CheckContext): Promise<F
               severity: 'warning',
               file: file.relPath,
               line: i + 1,
-              message: '`new RestTemplate()` created without connect/read timeouts — resilience risk.',
+              message: '`new RestTemplate()` created without connect/read timeouts: resilience risk.',
               suggestion: 'Build via `RestTemplateBuilder` or `RestClient` with explicit connect & read timeouts.',
             });
           }
@@ -238,7 +238,7 @@ export async function runRestApiBestPracticesCheck(ctx: CheckContext): Promise<F
                 severity: 'info',
                 file: file.relPath,
                 line: i + 1,
-                message: 'Field `@Autowired` injection detected — prefer constructor injection.',
+                message: 'Field `@Autowired` injection detected: prefer constructor injection.',
                 suggestion: 'Use `private final` fields with constructor injection for easier unit testing.',
               });
             }

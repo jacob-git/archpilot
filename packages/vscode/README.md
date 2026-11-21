@@ -1,4 +1,4 @@
-# ArchPilot — Architecture, Security, QA & AI Token Guardrails
+# ArchPilot: Architecture, Security, QA & AI Token Guardrails
 
 **Stop AI coding agents from burning tokens and rotting your architecture.**
 

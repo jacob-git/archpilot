@@ -26,7 +26,7 @@ export async function generatePrHandoffBrief(
   ]);
 
   if (br.changedFiles.length === 0) {
-    return `## PR & QA Handoff Brief — \`${repoName}\`\n\nNo git changes detected on the current branch.\n`;
+    return `## PR & QA Handoff Brief: \`${repoName}\`\n\nNo git changes detected on the current branch.\n`;
   }
 
   const changedModules = new Set(br.changedFiles.map(moduleOf));
@@ -47,7 +47,7 @@ export async function generatePrHandoffBrief(
         : '🟢 LOW';
 
   const lines: string[] = [
-    `## PR & QA Handoff Brief — \`${repoName}\``,
+    `## PR & QA Handoff Brief: \`${repoName}\``,
     '',
     `**Change Risk:** ${riskBadge} · **Changed Files:** ${br.changedFiles.length} · **Downstream Impacted:** ${br.transitiveDependents.length} · **Untested Impacted:** ${br.untestedImpactedFiles.length}`,
   ];
@@ -94,7 +94,7 @@ export async function generatePrHandoffBrief(
       lines.push(`- [ ] Run automated test suite: \`${tf}\``);
     }
   } else {
-    lines.push('- [ ] No matching automated test suites mapped to changed files — run full regression suite.');
+    lines.push('- [ ] No matching automated test suites mapped to changed files: run full regression suite.');
   }
   if (br.untestedImpactedFiles.length > 0) {
     lines.push(
@@ -113,17 +113,17 @@ export async function generatePrHandoffBrief(
   // Architecture, Security & NFR Gate
   lines.push('', '### Architecture, Security & NFR Gate', '');
   if (br.diffFindings.length === 0) {
-    lines.push('✅ **Passed** — 0 boundary violations, security findings, or NFR issues in changed files.');
+    lines.push('✅ **Passed**: 0 boundary violations, security findings, or NFR issues in changed files.');
   } else {
     const errors = br.diffFindings.filter((f) => f.severity === 'error').length;
     const warnings = br.diffFindings.filter((f) => f.severity === 'warning').length;
     lines.push(
-      `${errors > 0 ? '🔴 **Action Required**' : '🟡 **Review Recommended**'} — ${errors} error(s), ${warnings} warning(s) in changed files:`
+      `${errors > 0 ? '🔴 **Action Required**' : '🟡 **Review Recommended**'}: ${errors} error(s), ${warnings} warning(s) in changed files:`
     );
     lines.push('');
     for (const f of br.diffFindings.slice(0, 15)) {
       const icon = f.severity === 'error' ? '🔴' : f.severity === 'warning' ? '🟡' : '🔵';
-      lines.push(`- ${icon} **\`${f.id}\`** (\`${f.file ?? ''}${f.line ? `:${f.line}` : ''}\`) — ${f.message}`);
+      lines.push(`- ${icon} **\`${f.id}\`** (\`${f.file ?? ''}${f.line ? `:${f.line}` : ''}\`): ${f.message}`);
     }
   }
 

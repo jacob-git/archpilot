@@ -210,7 +210,7 @@ export async function runDependencyAudit(
 
     vulnerabilities.push(...parsed.vulnerabilities);
   } else if (hasPkg && !hasLock) {
-    notes.push('package.json found without package-lock.json — run `npm install` to enable npm CVE auditing.');
+    notes.push('package.json found without package-lock.json: run `npm install` to enable npm CVE auditing.');
   }
 
   // 2. Python (pip-audit if installed locally)
