@@ -36,6 +36,10 @@ npx archpilot . --arch-md
 # Audit dependency CVEs (auto-falls back to public npmjs.org if corporate registry lacks audit endpoint)
 npx archpilot . --dep-audit
 
+# Plan a dependency-ordered upgrade or migration (e.g. webpack-to-vite, spring-boot-3-to-4, cjs-to-esm)
+npx archpilot . --migrate webpack-to-vite
+npx archpilot . --migrate-md spring-boot-3-to-4
+
 # Universal CI formats
 npx archpilot . --fail-under 80 --format sarif > archpilot.sarif
 npx archpilot . --format markdown
@@ -48,9 +52,10 @@ npx archpilot . --format html > archpilot-report.html
 
 | Pillar | What It Solves |
 | :--- | :--- |
+| **AI Token Cost Optimizer** | Measures always-on instruction overhead (`AGENTS.md`/`CLAUDE.md`/`.cursor/rules`), converts to monthly \$/dev using your live **Copilot / VS Code models**, shows an **Active File Token Counter** in the Status Bar, generates compact `ARCHMAP.md` repo maps, and excludes large token sinks in `.aiignore` & `.cursorignore` in 1 click. |
+| **Upgrade & Migration Planner** | Offline readiness playbooks (**Webpack -> Vite**, **Spring Boot 3 -> 4**, **CommonJS -> ESM**, **React 18 -> 19**, **Pydantic v1 -> v2**) plus custom `archpilot.json` `migrations` guardrails. Orders impacted files into safe dependency waves (`MIGRATION_PLAN.md`) and hands Wave 1 straight to AI Chat. |
 | **Living Architecture Diagrams** | Interactive VS Code graph of modules + auto-detected **External Systems** (PostgreSQL, Redis, Kafka, AWS, OpenAI/Anthropic/Gemini). 1-click **Copy Mermaid**, **Export `ARCHITECTURE.md`**, and **Export SVG**. |
 | **1-Click PR & QA Handoff Brief** | Generates a ready-to-paste PR/MR/Jira brief with **Risk Badge**, **Mini Mermaid Impact Map**, **QA Regression Checklist** (tests to run + untested files), and **Security/Architecture Gate**. |
-| **AI Token Cost Optimizer** | Measures always-on instruction overhead (`AGENTS.md`/`CLAUDE.md`/`.cursor/rules`), converts to monthly \$/dev using your live **Copilot / VS Code models**, shows an **Active File Token Counter** in the Status Bar, and excludes large token sinks in `.aiignore` & `.cursorignore` in 1 click. |
 | **Security & CVE Guardrails** | Catches hardcoded secrets (AWS, GitHub, Stripe, Slack, OpenAI, Anthropic, Private Keys), exposed `.env`/`.key`, SQLi, command injection, XSS, disabled TLS, wildcard CORS, **poisoned AI instruction files** (hidden Unicode / `curl\|sh`), plus on-demand **Dependency CVE Audit** with 1-click `npm audit fix`. |
 | **Architecture & Stack Packs** | 6-language import graph (**TS, JS, Java, Python, Go, Rust**), circular dependency detection, smart auto-generated `archpilot.json` boundaries, **Spectral-style OpenAPI/REST linting**, Spring Boot NFRs, Next.js `'use client'` leaks, FastAPI async checks, HTTP timeouts, and QA flaky-test detection. |
 
@@ -75,7 +80,7 @@ flowchart LR
 
 ### GitHub Actions
 ```yaml
-- uses: jacob-git/archpilot@v0.5.0
+- uses: jacob-git/archpilot@v0.8.0
   with:
     fail-under: "80"
 ```

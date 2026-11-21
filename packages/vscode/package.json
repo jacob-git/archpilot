@@ -2,7 +2,7 @@
   "name": "archpilot-studio",
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "Pallattu",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -241,12 +241,16 @@
       ],
       "archpilot.explorerMenu": [
         {
-          "command": "archpilot.autoFixProject",
+          "command": "archpilot.optimizeTokenCost",
           "group": "0_fix@1"
         },
         {
-          "command": "archpilot.fixWithAiChat",
+          "command": "archpilot.autoFixProject",
           "group": "0_fix@2"
+        },
+        {
+          "command": "archpilot.fixWithAiChat",
+          "group": "0_fix@3"
         },
         {
           "command": "archpilot.openGraph",
@@ -308,14 +312,19 @@
       ],
       "view/item/context": [
         {
+          "command": "archpilot.optimizeTokenCost",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/",
+          "group": "0_fix@1"
+        },
+        {
           "command": "archpilot.autoFixProject",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.autofix(\\b|$)/",
-          "group": "0_fix@1"
+          "group": "0_fix@2"
         },
         {
           "command": "archpilot.fixWithAiChat",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
-          "group": "0_fix@2"
+          "group": "0_fix@3"
         },
         {
           "command": "archpilot.openGraph",
@@ -467,7 +476,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archpilot/core": "0.7.0"
+    "@archpilot/core": "0.8.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
