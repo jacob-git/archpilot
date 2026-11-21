@@ -159,6 +159,49 @@ export function activate(context: vscode.ExtensionContext): void {
   let auditQueued = false;
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
+  const applyAuditResults = (audits: FolderAudit[]): void => {
+    treeProvider.setAudits(audits);
+
+    if (audits.length === 1) {
+      const r = audits[0].report;
+      statusBar.text = `$(shield) ArchPilot: ${r.overallScore}/100`;
+      statusBar.tooltip = `${audits[0].name}: Grade ${r.grade} (${r.summary.errors} errors, ${r.summary.warnings} warnings). Click to refresh.`;
+    } else if (audits.length > 1) {
+      const minScore = Math.min(...audits.map((a) => a.report.overallScore));
+      statusBar.text = `$(shield) ArchPilot: ${minScore}/100 (${audits.length} repos)`;
+      statusBar.tooltip = audits
+        .map(
+          (a) =>
+            `${a.name}: ${a.report.overallScore}/100 (Grade ${a.report.grade}, ${a.report.summary.errors}E / ${a.report.summary.warnings}W)`
+        )
+        .join('\n');
+    }
+    statusBar.show();
+
+    diagnostics.clear();
+    const byFile = new Map<string, vscode.Diagnostic[]>();
+    for (const { rootDir, report } of audits) {
+      for (const finding of report.findings) {
+        if (!finding.file) continue;
+        const abs = path.join(rootDir, finding.file);
+        const lineIdx = Math.max(0, (finding.line ?? 1) - 1);
+        const diag = new vscode.Diagnostic(
+          new vscode.Range(lineIdx, 0, lineIdx, 200),
+          finding.suggestion ? `${finding.message} (${finding.suggestion})` : finding.message,
+          toVsCodeSeverity(finding.severity)
+        );
+        diag.source = 'ArchPilot';
+        diag.code = finding.id;
+        const list = byFile.get(abs) ?? [];
+        list.push(diag);
+        byFile.set(abs, list);
+      }
+    }
+    for (const [abs, list] of byFile.entries()) {
+      diagnostics.set(vscode.Uri.file(abs), list);
+    }
+  };
+
   const runAudit = async (): Promise<void> => {
     if (auditInFlight) {
       auditQueued = true;
@@ -215,47 +258,7 @@ export function activate(context: vscode.ExtensionContext): void {
         })
       );
 
-      const audits = orderedAudits.filter((a): a is FolderAudit => Boolean(a));
-      treeProvider.setAudits(audits);
-
-      if (audits.length === 1) {
-        const r = audits[0].report;
-        statusBar.text = `$(shield) ArchPilot: ${r.overallScore}/100`;
-        statusBar.tooltip = `${audits[0].name}: Grade ${r.grade} (${r.summary.errors} errors, ${r.summary.warnings} warnings). Click to refresh.`;
-      } else {
-        const minScore = Math.min(...audits.map((a) => a.report.overallScore));
-        statusBar.text = `$(shield) ArchPilot: ${minScore}/100 (${audits.length} repos)`;
-        statusBar.tooltip = audits
-          .map(
-            (a) =>
-              `${a.name}: ${a.report.overallScore}/100 (Grade ${a.report.grade}, ${a.report.summary.errors}E / ${a.report.summary.warnings}W)`
-          )
-          .join('\n');
-      }
-      statusBar.show();
-
-      diagnostics.clear();
-      const byFile = new Map<string, vscode.Diagnostic[]>();
-      for (const { rootDir, report } of audits) {
-        for (const finding of report.findings) {
-          if (!finding.file) continue;
-          const abs = path.join(rootDir, finding.file);
-          const lineIdx = Math.max(0, (finding.line ?? 1) - 1);
-          const diag = new vscode.Diagnostic(
-            new vscode.Range(lineIdx, 0, lineIdx, 200),
-            finding.suggestion ? `${finding.message} (${finding.suggestion})` : finding.message,
-            toVsCodeSeverity(finding.severity)
-          );
-          diag.source = 'ArchPilot';
-          diag.code = finding.id;
-          const list = byFile.get(abs) ?? [];
-          list.push(diag);
-          byFile.set(abs, list);
-        }
-      }
-      for (const [abs, list] of byFile.entries()) {
-        diagnostics.set(vscode.Uri.file(abs), list);
-      }
+      applyAuditResults(orderedAudits.filter((a): a is FolderAudit => Boolean(a)));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       void vscode.window.showErrorMessage(`ArchPilot audit failed: ${msg}`);
@@ -265,6 +268,29 @@ export function activate(context: vscode.ExtensionContext): void {
         auditQueued = false;
         void runAudit();
       }
+    }
+  };
+
+  const rescanSingleProject = async (node?: TreeNode): Promise<void> => {
+    const target = await resolveAuditForNode(node, 'Select repository to rescan');
+    if (!target) {
+      await runAudit();
+      return;
+    }
+    const cfg = vscode.workspace.getConfiguration('archpilot');
+    const inputPerMillionUsd = cfg.get<number>('costPerMillionInputTokens', 3);
+    const modelLabel = cfg.get<string>('modelPresetLabel', `Standard ($${inputPerMillionUsd}/1M)`);
+    statusBar.text = `$(loading~spin) ArchPilot: Rescanning ${target.name}...`;
+    statusBar.show();
+    try {
+      const report = await auditRepository(target.rootDir, { inputPerMillionUsd, modelLabel });
+      const updated = treeProvider
+        .getAudits()
+        .map((a) => (a.rootDir === target.rootDir ? { ...a, report } : a));
+      applyAuditResults(updated);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(`ArchPilot rescan failed: ${msg}`);
     }
   };
 
@@ -304,6 +330,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand('archpilot.refresh', runAudit),
+    vscode.commands.registerCommand('archpilot.rescanProject', rescanSingleProject),
 
     vscode.commands.registerCommand('archpilot.openGraph', async (node?: TreeNode) => {
       const audit = await resolveAuditForNode(

@@ -92,6 +92,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "archpilot.rescanProject",
+        "title": "Rescan Repository",
+        "category": "ArchPilot",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "archpilot.generateAgentsMd",
         "title": "Generate AGENTS.md",
         "category": "ArchPilot",
@@ -202,6 +208,14 @@
     ],
     "submenus": [
       {
+        "id": "archpilot.audit",
+        "label": "Audit"
+      },
+      {
+        "id": "archpilot.optimize",
+        "label": "Optimize"
+      },
+      {
         "id": "archpilot.generateExport",
         "label": "Generate & Export"
       }
@@ -209,24 +223,39 @@
     "menus": {
       "view/title": [
         {
-          "command": "archpilot.openGraph",
+          "command": "archpilot.refresh",
           "when": "view == archpilot.auditView",
           "group": "navigation@1"
         },
         {
-          "command": "archpilot.refresh",
+          "command": "archpilot.openGraph",
           "when": "view == archpilot.auditView",
           "group": "navigation@2"
         },
         {
+          "command": "archpilot.checkBlastRadius",
+          "when": "view == archpilot.auditView",
+          "group": "1_audit@1"
+        },
+        {
+          "command": "archpilot.auditDependencies",
+          "when": "view == archpilot.auditView",
+          "group": "1_audit@2"
+        },
+        {
           "command": "archpilot.generateAgentsMd",
           "when": "view == archpilot.auditView",
-          "group": "navigation@3"
+          "group": "2_setup@1"
         },
         {
           "command": "archpilot.initConfig",
           "when": "view == archpilot.auditView",
-          "group": "navigation@4"
+          "group": "2_setup@2"
+        },
+        {
+          "command": "archpilot.selectModelPreset",
+          "when": "view == archpilot.auditView",
+          "group": "3_settings@1"
         }
       ],
       "view/item/context": [
@@ -241,39 +270,29 @@
           "group": "0_fix@2"
         },
         {
-          "command": "archpilot.optimizeTokenCost",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/",
-          "group": "0_fix@3"
-        },
-        {
-          "command": "archpilot.copyFixPrompt",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
-          "group": "0_fix@4"
-        },
-        {
-          "command": "archpilot.checkBlastRadius",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "1_workflow@1"
-        },
-        {
-          "command": "archpilot.auditDependencies",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "1_workflow@2"
-        },
-        {
           "command": "archpilot.openGraph",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "1_workflow@3"
+          "group": "1_primary@1"
         },
         {
-          "command": "archpilot.generatePrBrief",
+          "command": "archpilot.rescanProject",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "1_workflow@4"
+          "group": "1_primary@2"
+        },
+        {
+          "submenu": "archpilot.audit",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "2_groups@1"
+        },
+        {
+          "submenu": "archpilot.optimize",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "2_groups@2"
         },
         {
           "submenu": "archpilot.generateExport",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "2_more@1"
+          "group": "2_groups@3"
         },
         {
           "command": "archpilot.fixWithAiChat",
@@ -319,6 +338,40 @@
           "command": "archpilot.selectModelPreset",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.tokenCost/",
           "group": "1_pricing@1"
+        }
+      ],
+      "archpilot.audit": [
+        {
+          "command": "archpilot.checkBlastRadius",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "1_audit@1"
+        },
+        {
+          "command": "archpilot.auditDependencies",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "1_audit@2"
+        },
+        {
+          "command": "archpilot.generatePrBrief",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "1_audit@3"
+        }
+      ],
+      "archpilot.optimize": [
+        {
+          "command": "archpilot.optimizeTokenCost",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/",
+          "group": "1_optimize@1"
+        },
+        {
+          "command": "archpilot.copyFixPrompt",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
+          "group": "1_optimize@2"
+        },
+        {
+          "command": "archpilot.selectModelPreset",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "2_pricing@1"
         }
       ],
       "archpilot.generateExport": [
