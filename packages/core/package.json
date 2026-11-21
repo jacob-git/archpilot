@@ -5,6 +5,25 @@
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "architecture",
+    "ai-coding",
+    "guardrails",
+    "static-analysis",
+    "security",
+    "agents-md",
+    "openapi",
+    "mermaid",
+    "mcp"
+  ],
+  "homepage": "https://github.com/jacob-git/archpilot#readme",
+  "bugs": {
+    "url": "https://github.com/jacob-git/archpilot/issues"
+  },
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",

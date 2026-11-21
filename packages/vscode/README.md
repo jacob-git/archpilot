@@ -1,54 +1,49 @@
-# ArchPilot — Architecture, Security & AI Token Guardrails
+# ArchPilot — Architecture, Security, QA & AI Token Guardrails
 
-**Keep your repositories clean, secure, token-efficient, and safe for AI coding agents — right inside VS Code, Cursor, and Windsurf.**
+**Stop AI coding agents from burning tokens and rotting your architecture.**
 
-ArchPilot runs fast, **100% offline & deterministic** checks (zero API keys, zero MCP required) across **TypeScript, JavaScript, Java (Spring Boot), Python, Go, and Rust**.
+Instant, **100% offline & deterministic** architecture guardrails, living diagrams, AI token-cost savings, security & CVE auditing, and 1-click PR/QA handoff briefs across **TypeScript, JavaScript, Java (Spring Boot), Python, Go, and Rust**.
 
----
-
-## Key Features
-
-### Interactive Architecture & Dependency Graph
-- Visualize modules, circular dependencies (highlighted in red), boundary violations, and token-heavy folders right inside VS Code.
-- Drag nodes, zoom/pan, and click any module to inspect files and dependencies side-by-side.
-
-### AI Token Cost Estimator & 1-Click Savings
-- Live **Token Cost** row per project showing estimated monthly cost/dev and potential savings, auto-detecting your live **VS Code / GitHub Copilot** models plus Fast / Standard / Reasoning / Frontier tiers.
-- **Active File Token Counter** in the Status Bar so you know before attaching `@file` to chat if a file is huge.
-- **1-Click `Reduce AI Token Cost (Exclude Large Files)`** writes unignored large files to both `.aiignore` and `.cursorignore`.
-- **Compact Repo Map (`ARCHMAP.md`)** generator so coding agents locate modules in 1 read instead of 15 searches.
-
-### Security Guardrails (AI-Era & Supply-Chain)
-- Detects hardcoded secrets (AWS, GitHub, Stripe, Slack, OpenAI, Anthropic, Google, Groq, Private Keys) and exposed `.env`/`.pem`/`.key` files.
-- Catches SQL injection, command injection, `eval`/`new Function`, XSS (`innerHTML`/`dangerouslySetInnerHTML`), disabled TLS verification, and wildcard CORS with credentials.
-- Detects **AI instruction-file poisoning** (hidden invisible/Bidi Unicode or `curl|sh` inside `AGENTS.md`/`.cursor/rules`) and prompt-injection sinks.
-- **1-Click Deterministic Quick Fixes** for exposed secret files, poisoned instructions, and disabled TLS — plus **`Fix with AI Chat`** for complex refactors.
-
-### Architecture, Stack & Git Diff Blast Radius
-- **Smart Auto-Generated Boundaries (`archpilot.json`)** tailored to your repo's actual folders (`domain`/`ui`/`db`, `controller`/`service`/`repository`, `packages/core`).
-- **Git Diff & Blast Radius** — Inspect changed files, direct & transitive downstream impacted files, and risk level before committing or merging.
-- **Stack Packs** — Auto-detects Spring Boot, FastAPI, Express/NestJS, Go/Rust APIs, and AI/LLM SDKs (OpenAPI contracts, Spring Controller→Service→Repository, `@Valid`, LLM timeouts, `max_tokens`, LLM-in-loop).
+> **Zero API keys required. Zero telemetry. Works in air-gapped & MCP-restricted enterprises.**
 
 ---
 
-## Works Everywhere (CLI, CI/CD & Optional MCP)
+## What You Get in 1 Click
 
-- **GitHub Actions, GitLab CI, Bitbucket Pipelines, Azure DevOps:**
-  ```bash
-  npx archpilot . --fail-under 80
-  npx archpilot . --diff
-  npx archpilot . --format sarif > archpilot.sarif
-  npx archpilot . --format markdown
-  ```
-- **Opt-in MCP Server (`npx archpilot mcp`):** Exposes `audit_repo`, `check_boundaries`, `check_diff`, `get_arch_map`, and `get_fix_prompt` (100% optional — zero penalty in MCP-restricted environments).
+### 1. Living Architecture & External Systems Graph
+- Interactive draggable/zoomable graph of your repo's modules plus auto-detected **External Systems** (PostgreSQL, MySQL, MongoDB, Redis, Kafka, AWS, Stripe, OpenAI, Anthropic, Gemini, MCP).
+- **1-Click Export:** **Copy Mermaid**, **Export `ARCHITECTURE.md`**, and **Export SVG** right from the graph header.
+
+### 2. 1-Click `PR & QA Handoff Brief`
+- Right-click any project → **Generate PR & QA Handoff Brief** for a ready-to-paste Markdown summary (GitHub PR, GitLab MR, Bitbucket PR, or Jira):
+  - **Change Risk badge** (`LOW` / `MEDIUM` / `HIGH`) & External Systems in blast radius
+  - **Mini Mermaid Impact Map** (changed modules → downstream impacted modules)
+  - **QA Regression Checklist** (exact tests to run + untested impacted files)
+  - **Architecture, Security & NFR Gate**
+
+### 3. AI Token Cost Estimator & 1-Click Savings
+- Visible **Token Cost** row per project showing monthly \$/dev and potential savings, auto-detecting your live **VS Code / GitHub Copilot** models plus Fast / Standard / Reasoning / Frontier tiers.
+- **Active File Token Counter** in the Status Bar warns before attaching huge files to AI chat.
+- **1-Click `Reduce AI Token Cost (Exclude Large Files)`** syncs unignored large files into both `.aiignore` and `.cursorignore`.
+- **Compact Repo Map (`ARCHMAP.md`)** generator so coding agents locate modules in 1 read.
+
+### 4. Security Guardrails & Dependency CVE Auditor
+- **Code & Supply-Chain Security:** Hardcoded secrets (AWS, GitHub, Stripe, Slack, OpenAI, Anthropic, Google, Groq, Private Keys), exposed `.env`/`.pem`/`.key`, SQLi, command injection, `eval`/`new Function`, XSS, disabled TLS, wildcard CORS, and **AI instruction-file poisoning** (hidden invisible/Bidi Unicode or `curl|sh` inside `AGENTS.md`/`.cursor/rules`).
+- **On-Demand Dependency CVE Audit:** Right-click any project → **Audit Dependency Vulnerabilities (CVEs)** with automatic fallback to `https://registry.npmjs.org` for corporate Artifactory/Nexus registries, plus **1-click `npm audit fix`** and **`Fix with AI Chat`**.
+- **Inline `⌘.` Quick Fix Lightbulb** right on editor squiggles.
+
+### 5. Multi-Language Architecture, REST/OpenAPI, NFR & QA Checks
+- **6-Language Import Graph:** Circular dependencies & smart auto-generated `archpilot.json` boundaries for TS, JS, Java, Python, Go, and Rust.
+- **Spectral-Style OpenAPI & REST Linting:** Checks `info.description`, `servers`, `securitySchemes`, `operationId`, `4xx`/`5xx` error responses, RPC verbs in URIs, and kebab-case paths.
+- **Framework & NFR Guardrails:** Spring Boot (`@RestController`→`@Service`→`@Repository`, `@Valid`, `RestTemplate` timeouts, unbounded `.findAll()`, `@Autowired` fields), Next.js `'use client'` server leaks, FastAPI sync-in-async, HTTP timeouts, swallowed `catch {}`, blocking `*FileSync`, and missing `/healthz`.
+- **QA & Executive Reports:** Flaky-test sleep detection, skipped tests, missing assertions, and **Export Executive Report (HTML)**.
 
 ---
 
-## Privacy & Enterprise NFR Guarantee
+## Privacy & Enterprise Guarantee
 
-- **100% Local & Air-Gapped:** Zero telemetry, zero external network calls, zero API keys required. Your source code never leaves your machine.
-- **Fast on Large Repos:** Debounced, non-overlapping re-audits with `.gitignore` / `.aiignore` / `.cursorignore` awareness so VS Code stays snappy even in large monorepos.
-- **NFR Guardrails Built In:** Flags outbound HTTP calls missing timeouts, swallowed `catch {}` errors, blocking `*FileSync` I/O in Node APIs, missing `/healthz` probes, flaky test sleeps, and untested blast-radius gaps.
+- **100% Local Core Analysis:** Zero telemetry, zero source code uploaded, zero API keys required.
+- **CLI & Any CI/CD:** Same engine via `npx archpilot . --format sarif|markdown|html`, `--diff`, `--pr-brief`, `--diagram`, and opt-in `archpilot mcp`.
 
 ---
 

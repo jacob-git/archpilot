@@ -1,65 +1,81 @@
 # ArchPilot
 
-**Executable architecture guardrails and AI-readiness auditing for VS Code, Cursor, Windsurf, MCP, and any CI/CD platform.**
+**Stop AI coding agents from burning tokens and rotting your architecture.**
 
-ArchPilot runs fast, deterministic checks (zero API keys required, zero Git-host lock-in) across **TypeScript, JavaScript, Java (Spring Boot), Python, Go, and Rust**:
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/Pallattu.archpilot-studio?label=VS%20Code%20Marketplace&color=38bdf8)](https://marketplace.visualstudio.com/items?itemName=Pallattu.archpilot-studio)
+[![License: MIT](https://img.shields.io/badge/License-MIT-34d399.svg)](https://github.com/jacob-git/archpilot/blob/main/LICENSE)
+[![Zero Telemetry](https://img.shields.io/badge/Telemetry-Zero%20%7C%20100%25%20Offline-0f172a.svg)](#privacy--enterprise-ready)
+[![Languages](https://img.shields.io/badge/Languages-TS%20%7C%20JS%20%7C%20Java%20%7C%20Python%20%7C%20Go%20%7C%20Rust-6366f1.svg)](#what-archpilot-does)
 
-- **Agent Instructions Audit** — Validates `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, and `.github/copilot-instructions.md` and catches dead file paths or broken `npm run` scripts.
-- **Architecture & Boundaries** — Enforces module/layer rules from `archpilot.json` and detects circular dependencies across 6 languages.
-- **Stack & API Guardrails** — Auto-detects Spring Boot, FastAPI, Express/NestJS, Go/Rust APIs, and AI/LLM SDKs; checks OpenAPI/API contracts, Spring Controller → Service → Repository boundaries, `@Valid` annotations, hardcoded API keys, and LLM timeouts.
-- **Context Hygiene** — Flags oversized files while respecting `.gitignore`, `.aiignore`, `.cursorignore`, and `archpilot.json`.
-- **Verifiability** — Checks automated test presence, runnable verification scripts, and TypeScript strictness.
+Instant, **100% offline & deterministic** architecture guardrails, living diagrams, AI token-cost optimization, security & CVE auditing, and 1-click PR/QA handoff briefs — in **VS Code, Cursor, Windsurf, CLI, and any CI/CD**.
+
+> **Zero API keys required. Zero telemetry. Works in air-gapped & MCP-restricted enterprises.**
 
 ---
 
-## CLI Usage (Works on GitHub, GitLab, Bitbucket, Azure DevOps, or Local)
+## Try It in 10 Seconds
 
+### VS Code / Cursor / Windsurf
+Install **[ArchPilot on VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Pallattu.archpilot-studio)** (`Pallattu.archpilot-studio`), open any workspace, and click the **ArchPilot shield icon** on the left Activity Bar.
+
+### CLI & CI/CD (GitHub, GitLab, Bitbucket, Azure DevOps)
 ```bash
-# Pretty terminal report
+# Instant repo audit (score, stack, token cost, security, NFRs)
 npx archpilot .
 
-# Enforce minimum score in CI (exits 1 on errors or score < 80)
-npx archpilot . --fail-under 80
+# Analyze git changes, downstream blast radius & QA test gaps
+npx archpilot . --diff
 
-# Output SARIF 2.1.0 (GitHub Code Scanning, GitLab, Azure DevOps, Bitbucket)
-npx archpilot . --format sarif > archpilot.sarif
+# Generate ready-to-paste PR & QA Handoff Brief (Markdown + Mermaid)
+npx archpilot . --pr-brief
 
-# Output Markdown (for PR/MR comments)
+# Output living Mermaid architecture diagram or write ARCHITECTURE.md
+npx archpilot . --diagram
+npx archpilot . --arch-md
+
+# Audit dependency CVEs (auto-falls back to public npmjs.org if corporate registry lacks audit endpoint)
+npx archpilot . --dep-audit
+
+# Universal CI formats
+npx archpilot . --fail-under 80 --format sarif > archpilot.sarif
 npx archpilot . --format markdown
-
-# Initialize AGENTS.md and archpilot.json
-npx archpilot --init
+npx archpilot . --format html > archpilot-report.html
 ```
 
 ---
 
-## MCP Server Mode (For AI Coding Agents)
+## What ArchPilot Does
 
-Let Claude Code, Cursor, Codex, or Antigravity self-check architecture boundaries before finishing edits:
-
-```json
-{
-  "mcpServers": {
-    "archpilot": {
-      "command": "npx",
-      "args": ["-y", "archpilot", "mcp"]
-    }
-  }
-}
-```
-
-Exposed MCP tools:
-- `audit_repo` — Full architecture & AI-readiness audit.
-- `check_boundaries` — Boundary & cycle check (optionally filtered to edited files).
-- `get_fix_prompt` — Structured remediation checklist.
+| Pillar | What It Solves |
+| :--- | :--- |
+| **Living Architecture Diagrams** | Interactive VS Code graph of modules + auto-detected **External Systems** (PostgreSQL, Redis, Kafka, AWS, OpenAI/Anthropic/Gemini). 1-click **Copy Mermaid**, **Export `ARCHITECTURE.md`**, and **Export SVG**. |
+| **1-Click PR & QA Handoff Brief** | Generates a ready-to-paste PR/MR/Jira brief with **Risk Badge**, **Mini Mermaid Impact Map**, **QA Regression Checklist** (tests to run + untested files), and **Security/Architecture Gate**. |
+| **AI Token Cost Optimizer** | Measures always-on instruction overhead (`AGENTS.md`/`CLAUDE.md`/`.cursor/rules`), converts to monthly \$/dev using your live **Copilot / VS Code models**, shows an **Active File Token Counter** in the Status Bar, and excludes large token sinks in `.aiignore` & `.cursorignore` in 1 click. |
+| **Security & CVE Guardrails** | Catches hardcoded secrets (AWS, GitHub, Stripe, Slack, OpenAI, Anthropic, Private Keys), exposed `.env`/`.key`, SQLi, command injection, XSS, disabled TLS, wildcard CORS, **poisoned AI instruction files** (hidden Unicode / `curl\|sh`), plus on-demand **Dependency CVE Audit** with 1-click `npm audit fix`. |
+| **Architecture & Stack Packs** | 6-language import graph (**TS, JS, Java, Python, Go, Rust**), circular dependency detection, smart auto-generated `archpilot.json` boundaries, **Spectral-style OpenAPI/REST linting**, Spring Boot NFRs, Next.js `'use client'` leaks, FastAPI async checks, HTTP timeouts, and QA flaky-test detection. |
 
 ---
 
-## CI/CD Snippets
+## Example: Living Mermaid Diagram (Generated by ArchPilot)
+
+```mermaid
+flowchart LR
+  subgraph repo["archpilot Modules"]
+    m_packages_core["packages/core"]
+    m_packages_cli["packages/cli"]
+    m_packages_vscode["packages/vscode"]
+  end
+  m_packages_cli --> m_packages_core
+  m_packages_vscode --> m_packages_core
+```
+
+---
+
+## CI/CD Integration (Any Git Host)
 
 ### GitHub Actions
 ```yaml
-- uses: jacob-git/archpilot@v0.1.0
+- uses: jacob-git/archpilot@v0.5.0
   with:
     fail-under: "80"
 ```
@@ -86,22 +102,27 @@ pipelines:
             - npx --yes archpilot . --fail-under 80
 ```
 
-### Azure Pipelines (`azure-pipelines.yml`)
-```yaml
-- script: npx --yes archpilot . --fail-under 80 --format sarif > archpilot.sarif
-  displayName: Run ArchPilot Guardrails
+### Opt-In MCP Server (For AI Coding Agents)
+```json
+{
+  "mcpServers": {
+    "archpilot": {
+      "command": "npx",
+      "args": ["-y", "archpilot", "mcp"]
+    }
+  }
+}
 ```
+Exposes `audit_repo`, `check_boundaries`, `check_diff`, `get_arch_map`, `get_architecture_diagram`, `generate_pr_brief`, and `get_fix_prompt`. *(100% optional — zero penalty in MCP-restricted environments.)*
 
 ---
 
-## Monorepo Structure
+## Privacy & Enterprise Ready
 
-```text
-packages/
-  core/    # @archpilot/core — Pure TypeScript analysis engine
-  cli/     # archpilot — CLI, CI runner & MCP stdio server
-  vscode/  # archpilot-vscode — VS Code & Open VSX extension
-```
+- **100% Local Core Analysis:** Zero telemetry, zero source code uploaded, zero API keys required.
+- **Enterprise Registry Safe:** Dependency CVE auditing automatically falls back to `https://registry.npmjs.org` if an internal registry disables the audit endpoint (configurable via `archpilot.npmAuditRegistry`).
+
+---
 
 ## Local Development
 

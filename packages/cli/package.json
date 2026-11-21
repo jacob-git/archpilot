@@ -6,6 +6,26 @@
   "bin": {
     "archpilot": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "archpilot",
+    "architecture",
+    "ai-coding",
+    "guardrails",
+    "static-analysis",
+    "security",
+    "agents-md",
+    "sarif",
+    "mermaid",
+    "mcp"
+  ],
+  "homepage": "https://github.com/jacob-git/archpilot#readme",
+  "bugs": {
+    "url": "https://github.com/jacob-git/archpilot/issues"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
