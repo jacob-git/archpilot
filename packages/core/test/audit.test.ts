@@ -13,6 +13,7 @@ import {
   generateArchitectureMd,
   generateArchMap,
   generateMermaidDiagram,
+  generatePrHandoffBrief,
   generateSmartArchPilotConfig,
 } from '../src/index.js';
 
@@ -510,6 +511,30 @@ test('generates living architecture diagram with external systems and valid Merm
     assert.ok(archMd.includes('# ARCHITECTURE.md'));
     assert.ok(archMd.includes('```mermaid'));
     assert.ok(archMd.includes('External Integrations'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('generates PR & QA Handoff Brief with risk badge, Mermaid impact map, and QA checklist', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'AGENTS.md': '# App\n',
+    'package.json': JSON.stringify({ name: 'shop', dependencies: { pg: '^8.0.0' }, scripts: { test: 'echo ok' } }),
+    'src/db/orders.ts': "import { Pool } from 'pg';\nexport const save = () => new Pool();\n",
+    'src/service/checkout.ts': "import { save } from '../db/orders.js';\nexport const checkout = () => save();\n",
+    'src/db/orders.test.ts': 'test("ok", () => { assert.ok(true); });\n',
+  });
+
+  try {
+    const brief = await generatePrHandoffBrief(dir, ['src/db/orders.ts']);
+    assert.ok(brief.includes('## PR & QA Handoff Brief'));
+    assert.ok(brief.includes('### Impact Map'));
+    assert.ok(brief.includes('```mermaid'));
+    assert.ok(brief.includes('PostgreSQL'));
+    assert.ok(brief.includes('### QA Regression Checklist'));
+    assert.ok(brief.includes('src/db/orders.test.ts'));
+    assert.ok(brief.includes('src/service/checkout.ts'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

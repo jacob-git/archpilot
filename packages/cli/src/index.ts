@@ -12,6 +12,7 @@ import {
   generateArchitectureMd,
   generateArchMap,
   generateMermaidDiagram,
+  generatePrHandoffBrief,
   generateSmartArchPilotConfig,
   type AuditReport,
   type Severity,
@@ -138,6 +139,7 @@ async function main(): Promise<void> {
   let mapMode = false;
   let diagramMode = false;
   let archMdMode = false;
+  let prBriefMode = false;
   let diffMode = false;
   let failUnder: number | undefined;
 
@@ -164,6 +166,8 @@ async function main(): Promise<void> {
       diagramMode = true;
     } else if (arg === '--arch-md') {
       archMdMode = true;
+    } else if (arg === '--pr-brief') {
+      prBriefMode = true;
     } else if (arg === '--diff') {
       diffMode = true;
     } else if (arg === '--fail-under') {
@@ -182,6 +186,7 @@ Options:
   --map                        Generate compact ARCHMAP.md repo index to save agent tokens
   --diagram                    Output living Mermaid architecture diagram (modules + external systems)
   --arch-md                    Generate ARCHITECTURE.md with living Mermaid diagram
+  --pr-brief                   Generate ready-to-paste PR & QA Handoff Brief (Markdown)
   --diff                       Analyze git changed files, blast radius, and QA test gaps
   --format <fmt>               Output format: text | json | sarif | markdown | html (default: text)
   --json                       Alias for --format json
@@ -215,6 +220,10 @@ Options:
     const md = await generateArchitectureMd(resolved);
     await writeFile(path.join(resolved, 'ARCHITECTURE.md'), md, 'utf8');
     console.log(`${GREEN}Generated ARCHITECTURE.md with live Mermaid diagram${RESET}`);
+    return;
+  }
+  if (prBriefMode) {
+    console.log(await generatePrHandoffBrief(resolved));
     return;
   }
   if (diffMode) {

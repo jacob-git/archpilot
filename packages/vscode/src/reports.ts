@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { access, writeFile } from 'node:fs/promises';
-import { analyzeBlastRadius, formatHtmlReport } from '@archpilot/core';
+import {
+  analyzeBlastRadius,
+  formatHtmlReport,
+  generatePrHandoffBrief,
+} from '@archpilot/core';
 import type { FolderAudit } from './types.js';
 
 async function fileExists(p: string): Promise<boolean> {
@@ -144,5 +148,22 @@ export async function exportExecutiveHtmlReport(audit: FolderAudit): Promise<voi
   );
   if (choice === 'Open in Browser') {
     await vscode.env.openExternal(saveUri);
+  }
+}
+
+export async function generateAndCopyPrBrief(audit: FolderAudit): Promise<void> {
+  const brief = await generatePrHandoffBrief(audit.rootDir);
+  await vscode.env.clipboard.writeText(brief);
+
+  const action = await vscode.window.showInformationMessage(
+    `Copied PR & QA Handoff Brief for ${audit.name} to clipboard — ready to paste into GitHub, GitLab, Bitbucket, or Jira.`,
+    'Open Preview'
+  );
+  if (action === 'Open Preview') {
+    const doc = await vscode.workspace.openTextDocument({
+      language: 'markdown',
+      content: brief,
+    });
+    await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
   }
 }

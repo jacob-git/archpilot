@@ -2,7 +2,7 @@
   "name": "archpilot-studio",
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "Pallattu",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -164,6 +164,11 @@
         "command": "archpilot.generateArchitectureMd",
         "title": "Generate ARCHITECTURE.md (Mermaid Diagram)",
         "icon": "$(graph)"
+      },
+      {
+        "command": "archpilot.generatePrBrief",
+        "title": "Generate PR & QA Handoff Brief",
+        "icon": "$(git-pull-request)"
       }
     ],
     "menus": {
@@ -199,6 +204,11 @@
           "command": "archpilot.checkBlastRadius",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
           "group": "0_view@2"
+        },
+        {
+          "command": "archpilot.generatePrBrief",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "0_view@3"
         },
         {
           "command": "archpilot.autoFixProject",
@@ -299,7 +309,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archpilot/core": "0.4.0"
+    "@archpilot/core": "0.5.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

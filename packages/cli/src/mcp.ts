@@ -7,6 +7,7 @@ import {
   generateArchMap,
   generateFixPrompt,
   generateMermaidDiagram,
+  generatePrHandoffBrief,
 } from '@archpilot/core';
 
 interface JsonRpcRequest {
@@ -111,6 +112,20 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'generate_pr_brief',
+    description:
+      'Generate a ready-to-paste PR & QA Handoff Brief (Markdown) with change risk, mini Mermaid impact map, QA regression checklist, and security/architecture gate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+      },
+    },
+  },
 ];
 
 function send(msg: Record<string, unknown>): void {
@@ -193,6 +208,13 @@ async function handleToolCall(
     const data = await buildArchitectureDiagram(repoPath);
     return {
       content: [{ type: 'text', text: generateMermaidDiagram(data) }],
+    };
+  }
+
+  if (name === 'generate_pr_brief') {
+    const brief = await generatePrHandoffBrief(repoPath);
+    return {
+      content: [{ type: 'text', text: brief }],
     };
   }
 

@@ -16,7 +16,11 @@ import {
 import { ArchPilotTreeProvider } from './treeProvider.js';
 import { ArchPilotCodeActionProvider } from './codeActions.js';
 import { openArchitectureGraph } from './graphView.js';
-import { exportExecutiveHtmlReport, showBlastRadiusPicker } from './reports.js';
+import {
+  exportExecutiveHtmlReport,
+  generateAndCopyPrBrief,
+  showBlastRadiusPicker,
+} from './reports.js';
 import {
   estimateModelRateUsd,
   getDetectedChatModels,
@@ -299,6 +303,15 @@ export function activate(context: vscode.ExtensionContext): void {
       );
       if (!audit) return;
       await exportExecutiveHtmlReport(audit);
+    }),
+
+    vscode.commands.registerCommand('archpilot.generatePrBrief', async (node?: TreeNode) => {
+      const audit = await resolveAuditForNode(
+        node,
+        'Select project folder to generate PR & QA Handoff Brief'
+      );
+      if (!audit) return;
+      await generateAndCopyPrBrief(audit);
     }),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: TreeNode) => {
