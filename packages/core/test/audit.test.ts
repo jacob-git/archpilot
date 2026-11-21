@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   analyzeBlastRadius,
   auditRepository,
+  formatHtmlReport,
   formatMarkdown,
   formatSarif,
   generateArchMap,
@@ -357,6 +358,39 @@ test('detects dependency drift, unpinned deps, Next.js client->server leaks, and
     assert.ok(report.findings.some((f) => f.id === 'dependency-version-conflict'));
     assert.ok(report.findings.some((f) => f.id === 'client-imports-server'));
     assert.ok(report.findings.some((f) => f.id === 'fastapi-sync-in-async'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('detects QA flaky tests, untested blast radius, and renders executive HTML report', async () => {
+  const dir = await createTempRepo({
+    '.gitignore': 'node_modules/\n',
+    'AGENTS.md': '# QA\n',
+    'package.json': JSON.stringify({ name: 'qa-app', scripts: { test: 'echo ok' } }),
+    'src/payment.ts': 'export const charge = () => true;\n',
+    'src/checkout.ts': "import { charge } from './payment.js';\nexport const run = () => charge();\n",
+    'src/payment.test.ts': [
+      'test("flaky", async () => {',
+      '  await page.waitForTimeout(3000);',
+      '});',
+      'test.skip("old test", () => {});',
+    ].join('\n'),
+  });
+
+  try {
+    const report = await auditRepository(dir);
+    assert.ok(report.findings.some((f) => f.id === 'flaky-test-sleep'));
+    assert.ok(report.findings.some((f) => f.id === 'skipped-test'));
+    assert.ok(report.findings.some((f) => f.id === 'test-missing-assertions'));
+
+    const br = await analyzeBlastRadius(dir, ['src/payment.ts']);
+    assert.deepEqual(br.impactedTestsToRun, ['src/payment.test.ts']);
+    assert.deepEqual(br.untestedImpactedFiles, ['src/checkout.ts']);
+
+    const html = formatHtmlReport(report);
+    assert.ok(html.includes('ArchPilot Executive Audit Report'));
+    assert.ok(html.includes('Category Scorecard'));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

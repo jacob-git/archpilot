@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   analyzeBlastRadius,
   auditRepository,
+  formatHtmlReport,
   formatMarkdown,
   formatSarif,
   generateAgentsMd,
@@ -129,7 +130,7 @@ async function main(): Promise<void> {
   }
 
   let targetDir = '.';
-  let format: 'text' | 'json' | 'sarif' | 'markdown' = 'text';
+  let format: 'text' | 'json' | 'sarif' | 'markdown' | 'html' = 'text';
   let initMode = false;
   let mapMode = false;
   let diffMode = false;
@@ -141,7 +142,13 @@ async function main(): Promise<void> {
       format = 'json';
     } else if (arg === '--format') {
       const next = args[++i];
-      if (next === 'text' || next === 'json' || next === 'sarif' || next === 'markdown') {
+      if (
+        next === 'text' ||
+        next === 'json' ||
+        next === 'sarif' ||
+        next === 'markdown' ||
+        next === 'html'
+      ) {
         format = next;
       }
     } else if (arg === '--init') {
@@ -164,8 +171,8 @@ Commands:
 Options:
   --init                       Generate starter AGENTS.md and smart archpilot.json
   --map                        Generate compact ARCHMAP.md repo index to save agent tokens
-  --diff                       Analyze git changed files and downstream blast radius
-  --format <fmt>               Output format: text | json | sarif | markdown (default: text)
+  --diff                       Analyze git changed files, blast radius, and QA test gaps
+  --format <fmt>               Output format: text | json | sarif | markdown | html (default: text)
   --json                       Alias for --format json
   --fail-under <score>         Exit with code 1 if overall score is below <score>
   -h, --help                   Show help
@@ -207,6 +214,14 @@ Options:
         console.log(`\n${BOLD}Downstream Impacted Files:${RESET}`);
         for (const f of br.transitiveDependents.slice(0, 20)) console.log(`  → ${f}`);
       }
+      if (br.impactedTestsToRun.length > 0) {
+        console.log(`\n${BOLD}Recommended Tests to Run:${RESET}`);
+        for (const f of br.impactedTestsToRun.slice(0, 20)) console.log(`  ✔ ${f}`);
+      }
+      if (br.untestedImpactedFiles.length > 0) {
+        console.log(`\n${YELLOW}${BOLD}Untested Impacted Files (QA Gap):${RESET}`);
+        for (const f of br.untestedImpactedFiles.slice(0, 20)) console.log(`  ⚠ ${f}`);
+      }
       if (br.diffFindings.length > 0) {
         console.log(`\n${BOLD}Findings in Changed Files:${RESET}`);
         for (const f of br.diffFindings) {
@@ -228,6 +243,8 @@ Options:
     console.log(formatSarif(report));
   } else if (format === 'markdown') {
     console.log(formatMarkdown(report));
+  } else if (format === 'html') {
+    console.log(formatHtmlReport(report));
   } else {
     printReport(report);
   }

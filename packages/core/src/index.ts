@@ -13,7 +13,7 @@ export {
   generateReadmeBadge,
   generateSmartArchPilotConfig,
 } from './generators.js';
-export { formatMarkdown, formatSarif } from './formatters.js';
+export { formatHtmlReport, formatMarkdown, formatSarif } from './formatters.js';
 export type {
   ArchPilotConfig,
   AuditOptions,

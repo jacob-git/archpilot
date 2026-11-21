@@ -2,7 +2,7 @@
   "name": "archpilot-studio",
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "Pallattu",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -154,6 +154,11 @@
         "command": "archpilot.fixWithAiChat",
         "title": "Fix with AI Chat",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "archpilot.exportHtmlReport",
+        "title": "Export Executive Report (HTML)",
+        "icon": "$(export)"
       }
     ],
     "menus": {
@@ -226,6 +231,11 @@
           "group": "3_share@1"
         },
         {
+          "command": "archpilot.exportHtmlReport",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "3_share@2"
+        },
+        {
           "command": "archpilot.fixWithAiChat",
           "when": "view == archpilot.auditView && viewItem == archpilot.category.issues",
           "group": "1_fix@1"
@@ -279,7 +289,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archpilot/core": "0.2.0"
+    "@archpilot/core": "0.3.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

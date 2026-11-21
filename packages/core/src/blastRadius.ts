@@ -4,10 +4,13 @@ import path from 'node:path';
 import { auditRepository } from './audit.js';
 import { loadConfig } from './config.js';
 import { buildImportGraph } from './graph.js';
-import { scanWorkspace, toPosix } from './scanner.js';
+import { CODE_EXTENSIONS, scanWorkspace, toPosix } from './scanner.js';
 import type { Finding } from './types.js';
 
 const execFileAsync = promisify(execFile);
+
+const TEST_FILE_RE =
+  /(?:^|\/)(?:__tests__\/|tests?\/|.*\.(?:test|spec|cy)\.[a-z0-9]+|test_.*\.py|.*_test\.go|.*Test\.java)$/i;
 
 export interface BlastRadiusReport {
   rootDir: string;
@@ -15,6 +18,8 @@ export interface BlastRadiusReport {
   directDependents: string[];
   transitiveDependents: string[];
   impactedModules: string[];
+  impactedTestsToRun: string[];
+  untestedImpactedFiles: string[];
   riskLevel: 'low' | 'medium' | 'high';
   diffFindings: Finding[];
 }
@@ -124,11 +129,55 @@ export async function analyzeBlastRadius(
     new Set([...changedFiles, ...transitiveDependents].map(moduleOf))
   ).sort();
 
+  // Map changed + impacted code files to matching test files (QA Test-Gap Analysis)
+  const allTestFiles = files.filter((f) => TEST_FILE_RE.test(f.relPath)).map((f) => f.relPath);
+  const impactedCodeFiles = Array.from(
+    new Set([...changedFiles, ...transitiveDependents])
+  ).filter((rel) => {
+    const ext = path.posix.extname(rel).toLowerCase();
+    return CODE_EXTENSIONS.has(ext) && !TEST_FILE_RE.test(rel);
+  });
+
+  const impactedTestsSet = new Set<string>();
+  const untestedImpactedFiles: string[] = [];
+
+  for (const codeFile of impactedCodeFiles) {
+    const ext = path.posix.extname(codeFile);
+    const base = path.posix.basename(codeFile, ext).toLowerCase();
+    const matched = allTestFiles.filter((tf) => {
+      const tfBase = path.posix.basename(tf).toLowerCase();
+      return (
+        tfBase.startsWith(`${base}.test.`) ||
+        tfBase.startsWith(`${base}.spec.`) ||
+        tfBase === `test_${base}.py` ||
+        tfBase === `${base}_test.go` ||
+        tfBase === `${base}test.java`
+      );
+    });
+    // Also include any test file directly importing this code file
+    for (const dep of reverseAdj.get(codeFile) ?? []) {
+      if (TEST_FILE_RE.test(dep)) matched.push(dep);
+    }
+
+    if (matched.length > 0) {
+      for (const m of matched) impactedTestsSet.add(m);
+    } else {
+      untestedImpactedFiles.push(codeFile);
+    }
+  }
+
+  for (const cf of changedFiles) {
+    if (TEST_FILE_RE.test(cf)) impactedTestsSet.add(cf);
+  }
+
+  const impactedTestsToRun = Array.from(impactedTestsSet).sort();
+  untestedImpactedFiles.sort();
+
   const hasErrorInDiff = diffFindings.some((f) => f.severity === 'error');
   const riskLevel: BlastRadiusReport['riskLevel'] =
     hasErrorInDiff || transitiveDependents.length > 12
       ? 'high'
-      : transitiveDependents.length >= 4
+      : transitiveDependents.length >= 4 || untestedImpactedFiles.length >= 4
         ? 'medium'
         : 'low';
 
@@ -138,6 +187,8 @@ export async function analyzeBlastRadius(
     directDependents,
     transitiveDependents,
     impactedModules,
+    impactedTestsToRun,
+    untestedImpactedFiles,
     riskLevel,
     diffFindings,
   };
