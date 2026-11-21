@@ -7,7 +7,7 @@ import {
   formatSarif,
   generateAgentsMd,
   generateArchMap,
-  generateArchPilotConfig,
+  generateSmartArchPilotConfig,
   type AuditReport,
   type Severity,
 } from '@archpilot/core';
@@ -114,8 +114,9 @@ async function runInit(targetDir: string): Promise<void> {
   if (await fileExists(configPath)) {
     console.log(`${DIM}Skipped archpilot.json (already exists)${RESET}`);
   } else {
-    await writeFile(configPath, generateArchPilotConfig(), 'utf8');
-    console.log(`${GREEN}Created archpilot.json${RESET}`);
+    const configContent = await generateSmartArchPilotConfig(targetDir);
+    await writeFile(configPath, configContent, 'utf8');
+    console.log(`${GREEN}Created archpilot.json (auto-detected boundaries)${RESET}`);
   }
 }
 

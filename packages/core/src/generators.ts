@@ -4,7 +4,7 @@ import { CODE_EXTENSIONS, scanWorkspace } from './scanner.js';
 import { DEFAULT_CONFIG, loadConfig } from './config.js';
 import { buildImportGraph } from './graph.js';
 import { detectStack } from './stack.js';
-import type { AuditReport, Finding } from './types.js';
+import type { AuditReport, BoundaryRule, Finding } from './types.js';
 
 export async function generateAgentsMd(rootDir: string): Promise<string> {
   const repoName = path.basename(path.resolve(rootDir));
@@ -68,6 +68,163 @@ export function generateArchPilotConfig(): string {
             message: 'Domain layer must not depend on UI or infrastructure.',
           },
         ],
+      },
+      null,
+      2
+    ) + '\n'
+  );
+}
+
+export async function generateSmartArchPilotConfig(rootDir: string): Promise<string> {
+  const resolvedRoot = path.resolve(rootDir);
+  const files = await scanWorkspace(resolvedRoot, DEFAULT_CONFIG.ignore);
+  const codeFiles = files.filter((f) => CODE_EXTENSIONS.has(f.ext));
+
+  // Collect all unique directory prefixes up to depth 4
+  const dirSet = new Set<string>();
+  for (const f of codeFiles) {
+    const parts = f.relPath.split('/');
+    for (let i = 1; i < Math.min(parts.length, 5); i++) {
+      dirSet.add(parts.slice(0, i).join('/'));
+    }
+  }
+  const dirs = Array.from(dirSet).sort();
+
+  const findDirs = (names: string[]): string[] => {
+    const set = new Set(names);
+    return dirs.filter((d) => {
+      const leaf = path.posix.basename(d).toLowerCase();
+      return set.has(leaf);
+    });
+  };
+
+  const boundaries: BoundaryRule[] = [];
+  const seenKeys = new Set<string>();
+  const addRule = (rule: BoundaryRule): void => {
+    const disallow = rule.disallow.filter((d) => d !== rule.from);
+    if (disallow.length === 0) return;
+    const key = `${rule.from}->${disallow.sort().join(',')}`;
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    boundaries.push({ ...rule, disallow });
+  };
+
+  // 1. Domain / Core isolation
+  const domainDirs = findDirs(['domain', 'core', 'entities', 'models']);
+  const outerDirs = findDirs([
+    'ui',
+    'components',
+    'pages',
+    'views',
+    'controllers',
+    'controller',
+    'routes',
+    'api',
+    'infra',
+    'infrastructure',
+    'db',
+    'database',
+  ]);
+  for (const dom of domainDirs) {
+    // Only disallow sibling/outer dirs that aren't ancestors/descendants of dom
+    const disallowed = outerDirs.filter(
+      (o) => !dom.startsWith(`${o}/`) && !o.startsWith(`${dom}/`)
+    );
+    addRule({
+      name: 'domain-isolation',
+      from: dom,
+      disallow: disallowed.slice(0, 6),
+      message: `Core/domain module \`${dom}\` must not depend on UI, API, or infrastructure layers.`,
+    });
+  }
+
+  // 2. UI / Frontend must not import DB / Repositories directly
+  const uiDirs = findDirs(['ui', 'components', 'views', 'pages']);
+  const dataDirs = findDirs(['db', 'database', 'repositories', 'repository', 'prisma', 'drizzle']);
+  for (const ui of uiDirs) {
+    const disallowed = dataDirs.filter(
+      (d) => !ui.startsWith(`${d}/`) && !d.startsWith(`${ui}/`)
+    );
+    addRule({
+      name: 'ui-no-direct-db',
+      from: ui,
+      disallow: disallowed,
+      message: `UI layer \`${ui}\` must not import database/repository modules directly.`,
+    });
+  }
+
+  // 3. Spring / Backend Controller -> Service -> Repository
+  const controllerDirs = findDirs(['controller', 'controllers', 'routes']);
+  const repoDirs = findDirs(['repository', 'repositories', 'dao']);
+  const serviceDirs = findDirs(['service', 'services']);
+  if (controllerDirs.length > 0 && serviceDirs.length > 0 && repoDirs.length > 0) {
+    for (const ctrl of controllerDirs) {
+      addRule({
+        name: 'controller-uses-service',
+        from: ctrl,
+        disallow: repoDirs,
+        message: `Controller \`${ctrl}\` should call Services instead of importing Repositories directly.`,
+      });
+    }
+    for (const repo of repoDirs) {
+      addRule({
+        name: 'repository-isolation',
+        from: repo,
+        disallow: [...controllerDirs, ...serviceDirs],
+        message: `Repository \`${repo}\` must not depend on Controller or Service layers.`,
+      });
+    }
+  }
+
+  // 4. Shared / Utils must not import feature/page/app modules
+  const sharedDirs = findDirs(['shared', 'common', 'utils', 'lib']);
+  const appDirs = findDirs(['features', 'pages', 'app', 'routes', 'controllers']);
+  for (const sh of sharedDirs) {
+    const disallowed = appDirs.filter(
+      (a) => !sh.startsWith(`${a}/`) && !a.startsWith(`${sh}/`)
+    );
+    addRule({
+      name: 'shared-no-app-imports',
+      from: sh,
+      disallow: disallowed.slice(0, 6),
+      message: `Shared module \`${sh}\` must not depend on higher-level feature or app layers.`,
+    });
+  }
+
+  // 5. Monorepo packages/core or packages/shared isolation
+  const pkgChildren = dirs.filter((d) => /^packages\/[^/]+$/.test(d));
+  const appChildren = dirs.filter((d) => /^apps\/[^/]+$/.test(d));
+  for (const pkg of pkgChildren) {
+    if (pkg.endsWith('/core') || pkg.endsWith('/shared') || pkg.endsWith('/common')) {
+      const others = [...pkgChildren.filter((p) => p !== pkg), ...appChildren];
+      addRule({
+        name: 'monorepo-core-purity',
+        from: pkg,
+        disallow: others,
+        message: `Shared workspace package \`${pkg}\` must stay independent of apps and sibling wrappers.`,
+      });
+    }
+  }
+
+  // Fallback if flat repo
+  if (boundaries.length === 0) {
+    const topDir = dirs[0] ?? 'src';
+    boundaries.push({
+      name: 'custom-boundary-example',
+      from: `${topDir}/core`,
+      disallow: [`${topDir}/ui`],
+      message: 'Customize these paths to enforce your repository module boundaries.',
+    });
+  }
+
+  return (
+    JSON.stringify(
+      {
+        maxFileLines: 800,
+        maxInstructionTokens: 3000,
+        maxFileTokens: 12000,
+        ignore: ['node_modules', 'dist', 'build', 'coverage'],
+        boundaries: boundaries.slice(0, 8),
       },
       null,
       2

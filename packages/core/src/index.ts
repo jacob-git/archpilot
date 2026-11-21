@@ -9,6 +9,7 @@ export {
   generateFixPrompt,
   generateGitignore,
   generateReadmeBadge,
+  generateSmartArchPilotConfig,
 } from './generators.js';
 export { formatMarkdown, formatSarif } from './formatters.js';
 export type {

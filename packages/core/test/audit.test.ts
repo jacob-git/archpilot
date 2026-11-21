@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { auditRepository, formatMarkdown, formatSarif, generateArchMap } from '../src/index.js';
+import {
+  auditRepository,
+  formatMarkdown,
+  formatSarif,
+  generateArchMap,
+  generateSmartArchPilotConfig,
+} from '../src/index.js';
 
 async function createTempRepo(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'archpilot-test-'));
@@ -246,6 +252,30 @@ test('detects duplicate instruction files and generates compact ARCHMAP.md', asy
     assert.ok(archMap.includes('# ARCHMAP.md'));
     assert.ok(archMap.includes('src/index.ts'));
     assert.ok(archMap.includes('src/core/helper.ts'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('auto-generates tailored boundary rules from real repository folders', async () => {
+  const dir = await createTempRepo({
+    'src/domain/order.ts': 'export interface Order { id: string; }\n',
+    'src/ui/OrderCard.tsx': 'export const OrderCard = () => null;\n',
+    'src/db/orderRepo.ts': 'export const save = () => {};\n',
+    'src/shared/date.ts': 'export const now = () => Date.now();\n',
+  });
+
+  try {
+    const raw = await generateSmartArchPilotConfig(dir);
+    const parsed = JSON.parse(raw) as { boundaries: Array<{ name: string; from: string; disallow: string[] }> };
+    assert.ok(
+      parsed.boundaries.some((b) => b.from === 'src/domain' && b.disallow.includes('src/ui')),
+      'expected domain-isolation rule'
+    );
+    assert.ok(
+      parsed.boundaries.some((b) => b.from === 'src/ui' && b.disallow.includes('src/db')),
+      'expected ui-no-direct-db rule'
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

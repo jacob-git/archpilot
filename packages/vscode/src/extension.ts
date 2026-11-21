@@ -6,10 +6,10 @@ import {
   DEFAULT_CONFIG,
   generateAgentsMd,
   generateArchMap,
-  generateArchPilotConfig,
   generateFixPrompt,
   generateGitignore,
   generateReadmeBadge,
+  generateSmartArchPilotConfig,
   type Finding,
 } from '@archpilot/core';
 import { ArchPilotTreeProvider } from './treeProvider.js';
@@ -275,7 +275,7 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window.showInformationMessage('archpilot.json already exists in this folder.');
         return;
       }
-      await writeFile(target, generateArchPilotConfig(), 'utf8');
+      await writeFile(target, await generateSmartArchPilotConfig(rootDir), 'utf8');
       await openFileInEditor(target);
       await runAudit();
     }),
@@ -312,7 +312,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (findingIds.has('no-boundary-rules')) {
         const target = path.join(audit.rootDir, 'archpilot.json');
         if (!(await exists(target))) {
-          await writeFile(target, generateArchPilotConfig(), 'utf8');
+          await writeFile(target, await generateSmartArchPilotConfig(audit.rootDir), 'utf8');
           created.push('archpilot.json');
         }
       }
@@ -357,7 +357,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       if (finding.id === 'no-boundary-rules') {
         const target = path.join(audit.rootDir, 'archpilot.json');
-        await writeFile(target, generateArchPilotConfig(), 'utf8');
+        await writeFile(target, await generateSmartArchPilotConfig(audit.rootDir), 'utf8');
         await openFileInEditor(target);
         await runAudit();
         return;
