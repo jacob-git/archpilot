@@ -208,6 +208,11 @@
     ],
     "submenus": [
       {
+        "id": "archpilot.explorerMenu",
+        "label": "ArchPilot",
+        "icon": "$(shield)"
+      },
+      {
         "id": "archpilot.audit",
         "label": "Audit"
       },
@@ -221,6 +226,55 @@
       }
     ],
     "menus": {
+      "explorer/context": [
+        {
+          "submenu": "archpilot.explorerMenu",
+          "when": "explorerResourceIsRoot",
+          "group": "7_modification@10"
+        }
+      ],
+      "archpilot.explorerMenu": [
+        {
+          "command": "archpilot.openGraph",
+          "group": "1_primary@1"
+        },
+        {
+          "command": "archpilot.rescanProject",
+          "group": "1_primary@2"
+        },
+        {
+          "command": "archpilot.autoFixProject",
+          "group": "2_fix@1"
+        },
+        {
+          "command": "archpilot.fixWithAiChat",
+          "group": "2_fix@2"
+        },
+        {
+          "command": "archpilot.optimizeTokenCost",
+          "group": "2_fix@3"
+        },
+        {
+          "command": "archpilot.checkBlastRadius",
+          "group": "3_audit@1"
+        },
+        {
+          "command": "archpilot.auditDependencies",
+          "group": "3_audit@2"
+        },
+        {
+          "command": "archpilot.generatePrBrief",
+          "group": "3_audit@3"
+        },
+        {
+          "command": "archpilot.generateArchitectureMd",
+          "group": "4_export@1"
+        },
+        {
+          "command": "archpilot.exportHtmlReport",
+          "group": "4_export@2"
+        }
+      ],
       "view/title": [
         {
           "command": "archpilot.refresh",

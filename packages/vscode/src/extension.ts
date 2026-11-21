@@ -50,9 +50,19 @@ async function pickWorkspaceFolder(placeHolder: string): Promise<string | undefi
   return picked?.fsPath;
 }
 
-function rootDirFromNode(node?: TreeNode): string | undefined {
-  if (!node || node.kind === 'loading') return undefined;
-  return node.audit.rootDir;
+type CommandTarget = TreeNode | vscode.Uri;
+
+function isTreeNode(arg?: CommandTarget): arg is TreeNode {
+  return Boolean(arg && !(arg instanceof vscode.Uri));
+}
+
+function rootDirFromNode(arg?: CommandTarget): string | undefined {
+  if (!arg) return undefined;
+  if (arg instanceof vscode.Uri) {
+    return vscode.workspace.getWorkspaceFolder(arg)?.uri.fsPath ?? arg.fsPath;
+  }
+  if (arg.kind === 'loading') return undefined;
+  return arg.audit.rootDir;
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -271,7 +281,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
 
-  const rescanSingleProject = async (node?: TreeNode): Promise<void> => {
+  const rescanSingleProject = async (node?: CommandTarget): Promise<void> => {
     const target = await resolveAuditForNode(node, 'Select repository to rescan');
     if (!target) {
       await runAudit();
@@ -303,11 +313,15 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const resolveAuditForNode = async (
-    node?: TreeNode,
+    arg?: CommandTarget,
     placeHolder = 'Select project folder'
   ): Promise<FolderAudit | undefined> => {
-    if (node && node.kind !== 'loading') return node.audit;
+    if (isTreeNode(arg) && arg.kind !== 'loading') return arg.audit;
     const audits = treeProvider.getAudits();
+    if (arg instanceof vscode.Uri) {
+      const dir = vscode.workspace.getWorkspaceFolder(arg)?.uri.fsPath ?? arg.fsPath;
+      return audits.find((a) => a.rootDir === dir);
+    }
     if (audits.length === 1) return audits[0];
     const dir = await pickWorkspaceFolder(placeHolder);
     return audits.find((a) => a.rootDir === dir);
@@ -332,55 +346,34 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('archpilot.refresh', runAudit),
     vscode.commands.registerCommand('archpilot.rescanProject', rescanSingleProject),
 
-    vscode.commands.registerCommand('archpilot.openGraph', async (node?: TreeNode) => {
-      const audit = await resolveAuditForNode(
-        node,
-        'Select project folder to open Architecture Graph'
-      );
+    vscode.commands.registerCommand('archpilot.openGraph', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to open Architecture Graph');
       if (!audit) return;
-      const scoreLabel = `${audit.report.overallScore}/100 (Grade ${audit.report.grade})`;
-      await openArchitectureGraph(audit.rootDir, scoreLabel);
+      await openArchitectureGraph(audit.rootDir, `${audit.report.overallScore}/100 (Grade ${audit.report.grade})`);
     }),
 
-    vscode.commands.registerCommand('archpilot.checkBlastRadius', async (node?: TreeNode) => {
-      const audit = await resolveAuditForNode(
-        node,
-        'Select project folder to check Git Diff & Blast Radius'
-      );
-      if (!audit) return;
-      await showBlastRadiusPicker(audit);
+    vscode.commands.registerCommand('archpilot.checkBlastRadius', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to check Git Diff & Blast Radius');
+      if (audit) await showBlastRadiusPicker(audit);
     }),
 
-    vscode.commands.registerCommand('archpilot.exportHtmlReport', async (node?: TreeNode) => {
-      const audit = await resolveAuditForNode(
-        node,
-        'Select project folder to export Executive HTML Report'
-      );
-      if (!audit) return;
-      await exportExecutiveHtmlReport(audit);
+    vscode.commands.registerCommand('archpilot.exportHtmlReport', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to export Executive HTML Report');
+      if (audit) await exportExecutiveHtmlReport(audit);
     }),
 
-    vscode.commands.registerCommand('archpilot.generatePrBrief', async (node?: TreeNode) => {
-      const audit = await resolveAuditForNode(
-        node,
-        'Select project folder to generate PR & QA Handoff Brief'
-      );
-      if (!audit) return;
-      await generateAndCopyPrBrief(audit);
+    vscode.commands.registerCommand('archpilot.generatePrBrief', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to generate PR & QA Handoff Brief');
+      if (audit) await generateAndCopyPrBrief(audit);
     }),
 
-    vscode.commands.registerCommand('archpilot.auditDependencies', async (node?: TreeNode) => {
-      const audit = await resolveAuditForNode(
-        node,
-        'Select project folder to audit dependency CVEs'
-      );
-      if (!audit) return;
-      await runDependencyAuditPicker(audit);
+    vscode.commands.registerCommand('archpilot.auditDependencies', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to audit dependency CVEs');
+      if (audit) await runDependencyAuditPicker(audit);
     }),
 
-    vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: TreeNode) => {
-      const rootDir =
-        rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for AGENTS.md'));
+    vscode.commands.registerCommand('archpilot.generateAgentsMd', async (node?: CommandTarget) => {
+      const rootDir = rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for AGENTS.md'));
       if (!rootDir) return;
       const target = path.join(rootDir, 'AGENTS.md');
       if (await exists(target)) {
@@ -392,10 +385,8 @@ export function activate(context: vscode.ExtensionContext): void {
       await runAudit();
     }),
 
-    vscode.commands.registerCommand('archpilot.initConfig', async (node?: TreeNode) => {
-      const rootDir =
-        rootDirFromNode(node) ??
-        (await pickWorkspaceFolder('Select project folder for archpilot.json'));
+    vscode.commands.registerCommand('archpilot.initConfig', async (node?: CommandTarget) => {
+      const rootDir = rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for archpilot.json'));
       if (!rootDir) return;
       const target = path.join(rootDir, 'archpilot.json');
       if (await exists(target)) {
@@ -407,10 +398,8 @@ export function activate(context: vscode.ExtensionContext): void {
       await runAudit();
     }),
 
-    vscode.commands.registerCommand('archpilot.generateArchMap', async (node?: TreeNode) => {
-      const rootDir =
-        rootDirFromNode(node) ??
-        (await pickWorkspaceFolder('Select project folder for ARCHMAP.md'));
+    vscode.commands.registerCommand('archpilot.generateArchMap', async (node?: CommandTarget) => {
+      const rootDir = rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for ARCHMAP.md'));
       if (!rootDir) return;
       const content = await generateArchMap(rootDir);
       const target = path.join(rootDir, 'ARCHMAP.md');
@@ -421,10 +410,8 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }),
 
-    vscode.commands.registerCommand('archpilot.generateArchitectureMd', async (node?: TreeNode) => {
-      const rootDir =
-        rootDirFromNode(node) ??
-        (await pickWorkspaceFolder('Select project folder for ARCHITECTURE.md'));
+    vscode.commands.registerCommand('archpilot.generateArchitectureMd', async (node?: CommandTarget) => {
+      const rootDir = rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for ARCHITECTURE.md'));
       if (!rootDir) return;
       const md = await generateArchitectureMd(rootDir);
       const target = path.join(rootDir, 'ARCHITECTURE.md');
@@ -435,7 +422,7 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }),
 
-    vscode.commands.registerCommand('archpilot.autoFixProject', async (node?: TreeNode) => {
+    vscode.commands.registerCommand('archpilot.autoFixProject', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to auto-fix');
       if (!audit) return;
 
@@ -557,13 +544,13 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showInformationMessage('Copied targeted AI Fix Prompt to clipboard.');
     }),
 
-    vscode.commands.registerCommand('archpilot.fixWithAiChat', async (node?: TreeNode) => {
+    vscode.commands.registerCommand('archpilot.fixWithAiChat', async (node?: CommandTarget) => {
       let prompt: string;
       let label: string;
-      if (node && node.kind === 'finding') {
+      if (isTreeNode(node) && node.kind === 'finding') {
         prompt = generateFixPrompt(node.audit.report, node.finding);
         label = `[${node.finding.id}]`;
-      } else if (node && node.kind === 'category') {
+      } else if (isTreeNode(node) && node.kind === 'category') {
         const scopedReport = { ...node.audit.report, findings: node.category.findings };
         prompt = generateFixPrompt(scopedReport);
         label = node.category.label;
@@ -698,7 +685,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await runAudit();
     }),
 
-    vscode.commands.registerCommand('archpilot.optimizeTokenCost', async (node?: TreeNode) => {
+    vscode.commands.registerCommand('archpilot.optimizeTokenCost', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to optimize token cost');
       if (!audit) return;
 
@@ -742,15 +729,15 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
 
-    vscode.commands.registerCommand('archpilot.copyFixPrompt', async (node?: TreeNode) => {
-      if (node && node.kind === 'finding') {
+    vscode.commands.registerCommand('archpilot.copyFixPrompt', async (node?: CommandTarget) => {
+      if (isTreeNode(node) && node.kind === 'finding') {
         await vscode.env.clipboard.writeText(generateFixPrompt(node.audit.report, node.finding));
         void vscode.window.showInformationMessage(
           `Copied AI Fix Prompt for [${node.finding.id}] to clipboard.`
         );
         return;
       }
-      if (node && node.kind === 'category') {
+      if (isTreeNode(node) && node.kind === 'category') {
         const scopedReport = { ...node.audit.report, findings: node.category.findings };
         await vscode.env.clipboard.writeText(generateFixPrompt(scopedReport));
         void vscode.window.showInformationMessage(
@@ -766,7 +753,7 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }),
 
-    vscode.commands.registerCommand('archpilot.copyBadge', async (node?: TreeNode) => {
+    vscode.commands.registerCommand('archpilot.copyBadge', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to copy badge');
       if (!audit) return;
       await vscode.env.clipboard.writeText(generateReadmeBadge(audit.report));
