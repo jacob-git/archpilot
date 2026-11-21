@@ -185,7 +185,7 @@ class ArchPilotTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         `• Standard / Sonnet / GPT-4o ($3/1M): ~$${calcTier(3)}/mo`,
         `• Frontier / Opus ($15/1M): ~$${calcTier(15)}/mo`,
         '',
-        'Click to change model pricing preset · Right-click to Optimize Token Cost',
+        'Click to change model pricing preset · Right-click to Reduce AI Token Cost',
       ].join('\n');
       return item;
     }

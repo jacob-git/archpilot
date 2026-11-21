@@ -132,7 +132,7 @@
       },
       {
         "command": "archpilot.optimizeTokenCost",
-        "title": "Optimize Token Cost (Auto-Ignore Sinks)",
+        "title": "Reduce AI Token Cost (Exclude Large Files)",
         "icon": "$(zap)"
       }
     ],
