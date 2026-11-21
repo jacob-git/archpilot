@@ -2,7 +2,7 @@
   "name": "archpilot-studio",
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "Pallattu",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -87,98 +87,123 @@
     "commands": [
       {
         "command": "archpilot.refresh",
-        "title": "ArchPilot: Refresh Audit",
+        "title": "Refresh Audit",
+        "category": "ArchPilot",
         "icon": "$(refresh)"
       },
       {
         "command": "archpilot.generateAgentsMd",
-        "title": "ArchPilot: Generate AGENTS.md",
+        "title": "Generate AGENTS.md",
+        "category": "ArchPilot",
         "icon": "$(new-file)"
       },
       {
         "command": "archpilot.initConfig",
-        "title": "ArchPilot: Initialize archpilot.json",
+        "title": "Initialize archpilot.json",
+        "category": "ArchPilot",
         "icon": "$(gear)"
       },
       {
         "command": "archpilot.autoFixProject",
         "title": "Auto-Fix Deterministic Issues",
+        "category": "ArchPilot",
         "icon": "$(wrench)"
       },
       {
         "command": "archpilot.copyFixPrompt",
         "title": "Copy Fix Prompt for AI Agent",
+        "category": "ArchPilot",
         "icon": "$(sparkle)"
       },
       {
         "command": "archpilot.copyBadge",
         "title": "Copy README Badge",
+        "category": "ArchPilot",
         "icon": "$(bookmark)"
       },
       {
         "command": "archpilot.quickFixFinding",
         "title": "Quick Fix",
+        "category": "ArchPilot",
         "icon": "$(wrench)"
       },
       {
         "command": "archpilot.ignoreFindingFile",
         "title": "Ignore File in archpilot.json",
+        "category": "ArchPilot",
         "icon": "$(eye-closed)"
       },
       {
         "command": "archpilot.addToAiIgnore",
         "title": "Add File to .aiignore (Save Agent Tokens)",
+        "category": "ArchPilot",
         "icon": "$(filter)"
       },
       {
         "command": "archpilot.selectModelPreset",
-        "title": "ArchPilot: Select Model Pricing Preset",
+        "title": "Select Model Pricing Preset",
+        "category": "ArchPilot",
         "icon": "$(credit-card)"
       },
       {
         "command": "archpilot.optimizeTokenCost",
         "title": "Reduce AI Token Cost (Exclude Large Files)",
+        "category": "ArchPilot",
         "icon": "$(zap)"
       },
       {
         "command": "archpilot.generateArchMap",
         "title": "Generate ARCHMAP.md (Compact Repo Map)",
+        "category": "ArchPilot",
         "icon": "$(map)"
       },
       {
         "command": "archpilot.openGraph",
-        "title": "ArchPilot: Open Architecture Graph",
+        "title": "Open Architecture Graph",
+        "category": "ArchPilot",
         "icon": "$(type-hierarchy)"
       },
       {
         "command": "archpilot.checkBlastRadius",
         "title": "Check Git Diff & Blast Radius",
+        "category": "ArchPilot",
         "icon": "$(git-compare)"
       },
       {
         "command": "archpilot.fixWithAiChat",
         "title": "Fix with AI Chat",
+        "category": "ArchPilot",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "archpilot.exportHtmlReport",
         "title": "Export Executive Report (HTML)",
+        "category": "ArchPilot",
         "icon": "$(export)"
       },
       {
         "command": "archpilot.generateArchitectureMd",
         "title": "Generate ARCHITECTURE.md (Mermaid Diagram)",
+        "category": "ArchPilot",
         "icon": "$(graph)"
       },
       {
         "command": "archpilot.generatePrBrief",
         "title": "Generate PR & QA Handoff Brief",
+        "category": "ArchPilot",
         "icon": "$(git-pull-request)"
       },
       {
         "command": "archpilot.auditDependencies",
         "title": "Audit Dependency Vulnerabilities (CVEs)",
+        "category": "ArchPilot",
         "icon": "$(shield)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "archpilot.generateExport",
+        "label": "Generate & Export"
       }
     ],
     "menus": {
@@ -206,114 +231,126 @@
       ],
       "view/item/context": [
         {
-          "command": "archpilot.openGraph",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "0_view@1"
+          "command": "archpilot.autoFixProject",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.autofix(\\b|$)/",
+          "group": "0_fix@1"
+        },
+        {
+          "command": "archpilot.fixWithAiChat",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
+          "group": "0_fix@2"
+        },
+        {
+          "command": "archpilot.optimizeTokenCost",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/",
+          "group": "0_fix@3"
+        },
+        {
+          "command": "archpilot.copyFixPrompt",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
+          "group": "0_fix@4"
         },
         {
           "command": "archpilot.checkBlastRadius",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "0_view@2"
-        },
-        {
-          "command": "archpilot.generatePrBrief",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "0_view@3"
+          "group": "1_workflow@1"
         },
         {
           "command": "archpilot.auditDependencies",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "0_view@4"
+          "group": "1_workflow@2"
         },
         {
-          "command": "archpilot.autoFixProject",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.autofix(\\b|$)/",
-          "group": "1_fix@1"
-        },
-        {
-          "command": "archpilot.fixWithAiChat",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
-          "group": "1_fix@2"
-        },
-        {
-          "command": "archpilot.copyFixPrompt",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/",
-          "group": "1_fix@3"
-        },
-        {
-          "command": "archpilot.generateAgentsMd",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.noAgents(\\b|$)/",
-          "group": "2_generate@1"
-        },
-        {
-          "command": "archpilot.initConfig",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project.*\\.noConfig(\\b|$)/",
-          "group": "2_generate@2"
-        },
-        {
-          "command": "archpilot.generateArchMap",
+          "command": "archpilot.openGraph",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "2_generate@3"
+          "group": "1_workflow@3"
         },
         {
-          "command": "archpilot.generateArchitectureMd",
+          "command": "archpilot.generatePrBrief",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "2_generate@4"
+          "group": "1_workflow@4"
         },
         {
-          "command": "archpilot.copyBadge",
+          "submenu": "archpilot.generateExport",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "3_share@1"
-        },
-        {
-          "command": "archpilot.exportHtmlReport",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.project(\\b|$)/",
-          "group": "3_share@2"
+          "group": "2_more@1"
         },
         {
           "command": "archpilot.fixWithAiChat",
           "when": "view == archpilot.auditView && viewItem == archpilot.category.issues",
-          "group": "1_fix@1"
+          "group": "0_fix@1"
         },
         {
           "command": "archpilot.copyFixPrompt",
           "when": "view == archpilot.auditView && viewItem == archpilot.category.issues",
-          "group": "1_fix@2"
+          "group": "0_fix@2"
         },
         {
           "command": "archpilot.quickFixFinding",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.fixable(\\b|$)/",
-          "group": "1_fix@1"
+          "group": "0_fix@1"
         },
         {
           "command": "archpilot.fixWithAiChat",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding(\\b|$)/",
-          "group": "1_fix@2"
+          "group": "0_fix@2"
         },
         {
           "command": "archpilot.copyFixPrompt",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding(\\b|$)/",
-          "group": "1_fix@3"
-        },
-        {
-          "command": "archpilot.ignoreFindingFile",
-          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.ignorable(\\b|$)/",
-          "group": "2_ignore@1"
+          "group": "0_fix@3"
         },
         {
           "command": "archpilot.addToAiIgnore",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.bloat(\\b|$)/",
-          "group": "2_ignore@2"
+          "group": "1_ignore@1"
+        },
+        {
+          "command": "archpilot.ignoreFindingFile",
+          "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.finding.*\\.ignorable(\\b|$)/",
+          "group": "1_ignore@2"
         },
         {
           "command": "archpilot.optimizeTokenCost",
-          "when": "view == archpilot.auditView && (viewItem == archpilot.tokenCost.hasSavings || viewItem =~ /^archpilot\\.project.*\\.sinks(\\b|$)/)",
-          "group": "1_fix@3"
+          "when": "view == archpilot.auditView && viewItem == archpilot.tokenCost.hasSavings",
+          "group": "0_fix@1"
         },
         {
           "command": "archpilot.selectModelPreset",
           "when": "view == archpilot.auditView && viewItem =~ /^archpilot\\.tokenCost/",
-          "group": "2_pricing@1"
+          "group": "1_pricing@1"
+        }
+      ],
+      "archpilot.generateExport": [
+        {
+          "command": "archpilot.generateAgentsMd",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.noAgents(\\b|$)/",
+          "group": "1_setup@1"
+        },
+        {
+          "command": "archpilot.initConfig",
+          "when": "viewItem =~ /^archpilot\\.project.*\\.noConfig(\\b|$)/",
+          "group": "1_setup@2"
+        },
+        {
+          "command": "archpilot.generateArchitectureMd",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "2_docs@1"
+        },
+        {
+          "command": "archpilot.generateArchMap",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "2_docs@2"
+        },
+        {
+          "command": "archpilot.exportHtmlReport",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "3_share@1"
+        },
+        {
+          "command": "archpilot.copyBadge",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/",
+          "group": "3_share@2"
         }
       ]
     }
@@ -324,7 +361,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archpilot/core": "0.6.0"
+    "@archpilot/core": "0.7.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
