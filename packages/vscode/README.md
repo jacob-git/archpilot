@@ -6,6 +6,8 @@ Instant, **100% offline & deterministic** architecture guardrails, living diagra
 
 > **Zero API keys required. Zero telemetry. Works in air-gapped & MCP-restricted enterprises.**
 
+![ArchPilot Workspace Sidebar and Optimize Menu](https://raw.githubusercontent.com/jacob-git/archpilot/main/docs/screenshots/workspace-sidebar.png)
+
 ---
 
 ## What You Get in 1 Click
@@ -20,6 +22,7 @@ Right-click any repository in the **ArchPilot sidebar** or directly in the **VS 
 - **Orphan / Dead File Finder (`Optimize > Find Orphan / Dead Files`):** Detects unreachable source files wasting AI tokens, with 1-click `.aiignore` exclusion and AI Chat cleanup review.
 
 ### 2. Upgrade & Migration Readiness Planner
+![ArchPilot AI Token Cost Breakdown and Upgrade Wave Planner](https://raw.githubusercontent.com/jacob-git/archpilot/main/docs/screenshots/token-and-upgrade.png)
 - Right-click any project -> **Audit > Plan Upgrade / Migration...** for offline, dependency-ordered migration planning:
   - Built-in playbooks: **Webpack / CRA -> Vite**, **Spring Boot 3 -> 4**, **CommonJS -> ESM**, **React 18 -> 19**, and **Pydantic v1 -> v2**.
   - **Custom Migration Scan** for any internal or third-party library, plus optional `migrations` guardrails in `archpilot.json` so legacy patterns cannot creep back in.
@@ -27,6 +30,7 @@ Right-click any repository in the **ArchPilot sidebar** or directly in the **VS 
 - **Architecture Baseline Snapshot & Diff (`Audit > Compare Architecture Baseline`):** Save a baseline before an upgrade or refactor and compare afterward to catch new circular dependencies, boundary breaks, or security regressions.
 
 ### 3. Living Architecture & External Systems Graph
+![ArchPilot Living Architecture and External Systems Graph](https://raw.githubusercontent.com/jacob-git/archpilot/main/docs/screenshots/architecture-graph.png)
 - Interactive draggable/zoomable graph of your repo's modules plus auto-detected **External Systems** (PostgreSQL, MySQL, MongoDB, Redis, Kafka, AWS, Stripe, OpenAI, Anthropic, Gemini, MCP).
 - **1-Click Export:** **Copy Mermaid**, **Export `ARCHITECTURE.md`**, and **Export SVG** right from the graph header.
 
