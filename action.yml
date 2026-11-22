@@ -1,5 +1,5 @@
 name: ArchPilot Architecture & AI-Readiness Audit
-description: Enforce executable architecture boundaries and AI-readiness guardrails in CI.
+description: Enforce executable architecture boundaries, AI-readiness guardrails, OpenAPI breaking-change diffs, and sticky PR/QA handoff comments in CI.
 inputs:
   path:
     description: Repository path to audit
@@ -10,12 +10,161 @@ inputs:
     required: false
     default: "70"
   format:
-    description: Output format (text | json | sarif | markdown)
+    description: Output format (text | json | sarif | markdown | html)
     required: false
     default: "text"
+  comment-pr:
+    description: Post or update a sticky Pull Request comment with PR/QA Handoff Brief, OpenAPI diff, and Baseline diff
+    required: false
+    default: "false"
+  check-api-diff:
+    description: Include OpenAPI breaking-change diff in the PR comment when specs are present
+    required: false
+    default: "true"
+  check-baseline:
+    description: Include architecture baseline regression diff in the PR comment when .archpilot-baseline.json exists
+    required: false
+    default: "true"
+  github-token:
+    description: GitHub token used to post sticky PR comments (requires pull-requests write permission)
+    required: false
+    default: ${{ github.token }}
 runs:
   using: composite
   steps:
-    - name: Run ArchPilot
+    - name: Run ArchPilot Audit
+      id: audit
       shell: bash
       run: npx --yes archpilot "${{ inputs.path }}" --format "${{ inputs.format }}" --fail-under "${{ inputs.fail-under }}"
+
+    - name: Post Sticky ArchPilot PR Comment
+      if: always() && inputs.comment-pr == 'true' && github.event.pull_request.number != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        TARGET_PATH: ${{ inputs.path }}
+        CHECK_API_DIFF: ${{ inputs.check-api-diff }}
+        CHECK_BASELINE: ${{ inputs.check-baseline }}
+      run: |
+        node <<'EOF'
+        const { execFileSync } = require('node:child_process');
+        const fs = require('node:fs');
+        const path = require('node:path');
+
+        const MARKER = '<!-- archpilot-pr-comment -->';
+        const targetPath = process.env.TARGET_PATH || '.';
+        const token = process.env.GITHUB_TOKEN;
+        const repo = process.env.REPO;
+        const prNumber = process.env.PR_NUMBER;
+
+        if (!token || !repo || !prNumber) {
+          console.log('Skipping ArchPilot PR comment: missing GITHUB_TOKEN, REPO, or PR_NUMBER.');
+          process.exit(0);
+        }
+
+        function runCli(args) {
+          try {
+            return execFileSync('npx', ['--yes', 'archpilot', targetPath, ...args], {
+              encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'pipe'],
+            });
+          } catch (err) {
+            return (err && err.stdout ? String(err.stdout) : '');
+          }
+        }
+
+        const sections = [MARKER];
+
+        const prBrief = runCli(['--pr-brief']).trim();
+        if (prBrief) {
+          sections.push(prBrief);
+        }
+
+        if (process.env.CHECK_API_DIFF === 'true') {
+          const rawApi = runCli(['--api-diff', '--format', 'json']).trim();
+          try {
+            const api = JSON.parse(rawApi);
+            if (api && api.specsChecked > 0) {
+              const lines = ['### OpenAPI Breaking-Change Diff'];
+              if (!api.breakingChanges || api.breakingChanges.length === 0) {
+                lines.push(`No breaking API changes across ${api.specsChecked} spec(s).`);
+              } else {
+                lines.push(`Detected **${api.breakingChanges.length}** breaking change(s) vs \`${api.comparedAgainst}\`:`);
+                for (const bc of api.breakingChanges.slice(0, 20)) {
+                  lines.push(`- **[${String(bc.severity).toUpperCase()}]** \`${bc.file}\` (\`${bc.ruleId}\`): ${bc.message}`);
+                }
+              }
+              sections.push(lines.join('\n'));
+            }
+          } catch {
+            // ignore non-JSON output
+          }
+        }
+
+        if (
+          process.env.CHECK_BASELINE === 'true' &&
+          fs.existsSync(path.join(targetPath, '.archpilot-baseline.json'))
+        ) {
+          const rawBase = runCli(['--compare-baseline', '--format', 'json']).trim();
+          try {
+            const base = JSON.parse(rawBase);
+            if (base && base.hasBaseline) {
+              const delta = base.scoreDelta >= 0 ? `+${base.scoreDelta}` : `${base.scoreDelta}`;
+              const lines = [
+                '### Architecture Baseline Diff',
+                `- **Status:** \`${String(base.status).toUpperCase()}\` | **Score:** ${base.baselineScore} -> ${base.currentScore} (${delta})`,
+                `- **New Regressions:** ${(base.newFindings || []).length} | **Resolved:** ${(base.resolvedSignatures || []).length}`,
+              ];
+              for (const f of (base.newFindings || []).slice(0, 15)) {
+                lines.push(`  - **[${String(f.severity).toUpperCase()}]** \`${f.id}\` ${f.file ? `(\`${f.file}\`)` : ''}: ${f.message}`);
+              }
+              sections.push(lines.join('\n'));
+            }
+          } catch {
+            // ignore non-JSON output
+          }
+        }
+
+        const body = sections.join('\n\n---\n\n');
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'archpilot-action',
+        };
+
+        (async () => {
+          const listRes = await fetch(
+            `https://api.github.com/repos/${repo}/issues/${prNumber}/comments?per_page=100`,
+            { headers }
+          );
+          if (!listRes.ok) {
+            console.error(`Failed to list PR comments: HTTP ${listRes.status}`);
+            process.exit(0);
+          }
+          const comments = await listRes.json();
+          const existing = Array.isArray(comments)
+            ? comments.find((c) => typeof c.body === 'string' && c.body.includes(MARKER))
+            : undefined;
+
+          const url = existing
+            ? `https://api.github.com/repos/${repo}/issues/comments/${existing.id}`
+            : `https://api.github.com/repos/${repo}/issues/${prNumber}/comments`;
+          const method = existing ? 'PATCH' : 'POST';
+
+          const saveRes = await fetch(url, {
+            method,
+            headers,
+            body: JSON.stringify({ body }),
+          });
+          if (!saveRes.ok) {
+            console.error(`Failed to ${method} ArchPilot PR comment: HTTP ${saveRes.status}`);
+          } else {
+            console.log(`${existing ? 'Updated' : 'Created'} sticky ArchPilot PR comment on #${prNumber}.`);
+          }
+        })().catch((err) => {
+          console.error('ArchPilot PR comment error:', err);
+        });
+        EOF

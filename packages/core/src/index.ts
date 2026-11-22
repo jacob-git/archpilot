@@ -2,8 +2,15 @@ export { auditRepository } from './audit.js';
 export { analyzeBlastRadius } from './blastRadius.js';
 export type { BlastRadiusReport } from './blastRadius.js';
 export { generatePrHandoffBrief } from './prBrief.js';
-export { parseNpmAuditJson, runDependencyAudit } from './depAudit.js';
+export {
+  parseGoVulnCheckJson,
+  parseNpmAuditJson,
+  parseOsvScannerJson,
+  parsePipAuditJson,
+  runDependencyAudit,
+} from './depAudit.js';
 export type {
+  DepAuditEcosystem,
   DependencyAuditOptions,
   DependencyAuditReport,
   DependencyVulnerability,
@@ -54,7 +61,7 @@ export type {
   TokenBreakdownReport,
 } from './tokenBreakdown.js';
 export { findUnusedDependencies } from './unusedDeps.js';
-export type { UnusedDependencyInfo, UnusedDepsReport } from './unusedDeps.js';
+export type { DependencyEcosystem, UnusedDependencyInfo, UnusedDepsReport } from './unusedDeps.js';
 export { analyzeOpenApiBreakingChanges, diffOpenApiSpecs } from './openApiDiff.js';
 export type { OpenApiBreakingChange, OpenApiDiffReport } from './openApiDiff.js';
 export type {

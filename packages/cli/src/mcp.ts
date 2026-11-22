@@ -2,12 +2,23 @@ import { createInterface } from 'node:readline';
 import path from 'node:path';
 import {
   analyzeBlastRadius,
+  analyzeMigration,
+  analyzeOpenApiBreakingChanges,
+  analyzeTokenBreakdown,
   auditRepository,
   buildArchitectureDiagram,
+  compareAgainstBaseline,
+  findOrphanFiles,
+  findUnusedDependencies,
   generateArchMap,
   generateFixPrompt,
   generateMermaidDiagram,
+  generateMigrationPlanMd,
   generatePrHandoffBrief,
+  runDependencyAudit,
+  saveArchitectureBaseline,
+  suggestMigrationPlaybooks,
+  type MigrationPlaybookId,
 } from '@archpilot/core';
 
 interface JsonRpcRequest {
@@ -126,6 +137,126 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'plan_migration',
+    description:
+      'Analyze upgrade or migration readiness (e.g. webpack-to-vite, spring-boot-3-to-4, cjs-to-esm, react-18-to-19, pydantic-v1-to-v2, or custom archpilot.json migration rules) and return dependency-ordered migration waves.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+        playbook: {
+          type: 'string',
+          description:
+            'Migration playbook ID (e.g. webpack-to-vite, spring-boot-3-to-4, cjs-to-esm, react-18-to-19, pydantic-v1-to-v2). Omit to auto-detect the best matching playbook.',
+        },
+        format: {
+          type: 'string',
+          enum: ['json', 'markdown'],
+          description: 'Output format: json (default) or markdown (MIGRATION_PLAN.md).',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_token_breakdown',
+    description:
+      'Identify the heaviest folders and files by estimated AI token count and $/read so agents can optimize context usage and update .aiignore.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+        modelRatePerMillion: {
+          type: 'number',
+          description: 'Optional input token price in USD per 1M tokens (defaults to $3/1M).',
+        },
+      },
+    },
+  },
+  {
+    name: 'find_orphans',
+    description:
+      'Find unreachable/dead source files with zero inbound imports that waste AI agent tokens.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+      },
+    },
+  },
+  {
+    name: 'find_unused_deps',
+    description:
+      'Find declared runtime dependencies never imported in source across npm (package.json), Python (requirements.txt/pyproject.toml), Java (pom.xml/build.gradle), and Go (go.mod).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+      },
+    },
+  },
+  {
+    name: 'check_openapi_diff',
+    description:
+      'Compare modified OpenAPI/Swagger specs against git HEAD / main to detect breaking API changes (removed endpoints/methods/2xx responses, removed schema properties, newly required fields).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+      },
+    },
+  },
+  {
+    name: 'compare_baseline',
+    description:
+      'Compare current repository architecture against a saved .archpilot-baseline.json snapshot (or save a new baseline when save=true) to detect circular dependency, boundary, external-system, and security regressions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+        save: {
+          type: 'boolean',
+          description: 'If true, saves a new baseline snapshot instead of comparing.',
+        },
+      },
+    },
+  },
+  {
+    name: 'audit_dependencies',
+    description:
+      'Run a dependency CVE audit across detected ecosystems (npm with public registry fallback, Python pip-audit, Go govulncheck, Java Maven/Gradle).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Repository root path (defaults to current working directory).',
+        },
+        npmRegistry: {
+          type: 'string',
+          description: 'Optional custom npm registry URL for npm audit.',
+        },
+      },
+    },
+  },
 ];
 
 function send(msg: Record<string, unknown>): void {
@@ -218,6 +349,78 @@ async function handleToolCall(
     };
   }
 
+  if (name === 'plan_migration') {
+    let playbook = typeof args.playbook === 'string' && args.playbook.trim() ? args.playbook.trim() : '';
+    if (!playbook) {
+      const suggested = await suggestMigrationPlaybooks(repoPath);
+      playbook = suggested[0]?.id ?? 'cjs-to-esm';
+    }
+    const plan = await analyzeMigration(repoPath, { playbookId: playbook as MigrationPlaybookId });
+    const fmt = args.format === 'markdown' ? 'markdown' : 'json';
+    return {
+      content: [
+        {
+          type: 'text',
+          text: fmt === 'markdown' ? generateMigrationPlanMd(plan) : JSON.stringify(plan, null, 2),
+        },
+      ],
+    };
+  }
+
+  if (name === 'get_token_breakdown') {
+    const rate = typeof args.modelRatePerMillion === 'number' && args.modelRatePerMillion > 0
+      ? args.modelRatePerMillion
+      : undefined;
+    const breakdown = await analyzeTokenBreakdown(repoPath, rate);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(breakdown, null, 2) }],
+    };
+  }
+
+  if (name === 'find_orphans') {
+    const report = await findOrphanFiles(repoPath);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(report, null, 2) }],
+    };
+  }
+
+  if (name === 'find_unused_deps') {
+    const report = await findUnusedDependencies(repoPath);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(report, null, 2) }],
+    };
+  }
+
+  if (name === 'check_openapi_diff') {
+    const report = await analyzeOpenApiBreakingChanges(repoPath);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(report, null, 2) }],
+    };
+  }
+
+  if (name === 'compare_baseline') {
+    if (args.save === true) {
+      const saved = await saveArchitectureBaseline(repoPath);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(saved, null, 2) }],
+      };
+    }
+    const diff = await compareAgainstBaseline(repoPath);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(diff, null, 2) }],
+    };
+  }
+
+  if (name === 'audit_dependencies') {
+    const npmRegistry = typeof args.npmRegistry === 'string' && args.npmRegistry.trim()
+      ? args.npmRegistry.trim()
+      : undefined;
+    const report = await runDependencyAudit(repoPath, { npmRegistry });
+    return {
+      content: [{ type: 'text', text: JSON.stringify(report, null, 2) }],
+    };
+  }
+
   return {
     isError: true,
     content: [{ type: 'text', text: `Unknown tool: ${name}` }],
@@ -251,7 +454,7 @@ export async function runMcpServer(): Promise<void> {
           result: {
             protocolVersion: '2024-11-05',
             capabilities: { tools: {} },
-            serverInfo: { name: 'archpilot', version: '0.1.0' },
+            serverInfo: { name: 'archpilot', version: '1.2.0' },
           },
         });
       } else if (req.method === 'ping') {

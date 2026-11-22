@@ -47,13 +47,72 @@ export type InspectorActionHandler = (
   payload?: string
 ) => Promise<InspectorViewModel | void> | InspectorViewModel | void;
 
-const activePanels = new Map<
-  string,
-  { panel: vscode.WebviewPanel; handler: InspectorActionHandler }
->();
+interface TabSummary {
+  viewId: string;
+  tabTitle: string;
+}
 
-function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
-  const safeJson = JSON.stringify(initialModel).replace(/</g, '\\u003c');
+interface StoredTab {
+  model: InspectorViewModel;
+  handler: InspectorActionHandler;
+}
+
+const MAX_RECENT_TABS = 10;
+let sharedPanel: vscode.WebviewPanel | undefined;
+let activeViewId: string | undefined;
+const recentTabs = new Map<string, StoredTab>();
+
+export function inspectorModelToMarkdown(model: InspectorViewModel): string {
+  const lines: string[] = [`# ${model.heading}`];
+  if (model.subheading) {
+    lines.push(`_${model.subheading}_`);
+  }
+  if (model.metrics.length > 0) {
+    lines.push('');
+    lines.push('| ' + model.metrics.map((m) => m.label).join(' | ') + ' |');
+    lines.push('| ' + model.metrics.map(() => '---').join(' | ') + ' |');
+    lines.push('| ' + model.metrics.map((m) => m.value).join(' | ') + ' |');
+  }
+  const nonEmptySections = model.sections.filter((s) => s.rows.length > 0);
+  if (nonEmptySections.length === 0) {
+    lines.push('', model.emptyMessage || 'No items to display.');
+    return lines.join('\n');
+  }
+  for (const sec of nonEmptySections) {
+    lines.push('', `## ${sec.title}${sec.subtitle ? ` — ${sec.subtitle}` : ''}`);
+    for (const r of sec.rows) {
+      const badge = r.badge ? `**[${r.badge.text}]** ` : '';
+      const meta = r.meta ? ` (${r.meta})` : '';
+      lines.push(`- ${badge}\`${r.title}\`${meta}${r.detail ? ` — ${r.detail}` : ''}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function getTabSummaries(): TabSummary[] {
+  return [...recentTabs.values()].map((t) => ({
+    viewId: t.model.viewId,
+    tabTitle: t.model.tabTitle,
+  }));
+}
+
+function postState(panel: vscode.WebviewPanel, model: InspectorViewModel): void {
+  panel.title = model.tabTitle;
+  void panel.webview.postMessage({
+    type: 'update',
+    model,
+    tabs: getTabSummaries(),
+    activeViewId: model.viewId,
+  });
+}
+
+function buildHtml(nonce: string, initialModel: InspectorViewModel, initialTabs: TabSummary[]): string {
+  const safeJson = JSON.stringify({
+    model: initialModel,
+    tabs: initialTabs,
+    activeViewId: initialModel.viewId,
+  }).replace(/</g, '\\u003c');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -64,20 +123,62 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 20px 24px 36px;
+    padding: 0 24px 36px;
     background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
     font-family: var(--vscode-font-family);
     font-size: 13px;
     line-height: 1.5;
   }
+  .tab-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 10px 0 8px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+  }
+  .tab-bar.hidden { display: none; }
+  .tab-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+  }
+  .tab-pill:hover {
+    background: var(--vscode-sideBar-background);
+    color: var(--vscode-editor-foreground);
+  }
+  .tab-pill.active {
+    background: var(--vscode-sideBar-background);
+    border-color: var(--vscode-panel-border);
+    color: var(--vscode-editor-foreground);
+    font-weight: 600;
+  }
+  .tab-close {
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.65;
+    padding: 0 2px;
+    border-radius: 3px;
+  }
+  .tab-close:hover { opacity: 1; background: rgba(128,128,128,0.25); }
   .header {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    padding-bottom: 16px;
+    padding: 14px 0 16px;
     border-bottom: 1px solid var(--vscode-panel-border);
   }
   .heading { margin: 0; font-size: 18px; font-weight: 700; }
@@ -108,7 +209,7 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 10px;
-    margin: 16px 0 20px;
+    margin: 16px 0 16px;
   }
   .metric-card {
     background: var(--vscode-sideBar-background);
@@ -122,7 +223,50 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
   .tone-warn { color: #fbbf24; }
   .tone-error { color: #f87171; }
   .tone-info { color: #38bdf8; }
-  .section { margin-top: 20px; }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 4px 0 16px;
+  }
+  .search-input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 420px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    background: var(--vscode-input-background, var(--vscode-sideBar-background));
+    color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
+    font-family: var(--vscode-font-family);
+    font-size: 12.5px;
+    outline: none;
+  }
+  .search-input:focus {
+    border-color: var(--vscode-focusBorder, #38bdf8);
+  }
+  .filter-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .pill {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    background: transparent;
+    border: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-descriptionForeground);
+  }
+  .pill.active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: transparent;
+  }
+  .section { margin-top: 18px; }
   .section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
   .section-title { margin: 0; font-size: 14px; font-weight: 700; }
   .section-sub { font-size: 12px; color: var(--vscode-descriptionForeground); }
@@ -174,10 +318,18 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="tabs" class="tab-bar hidden"></div>
+<div id="chrome"></div>
+<div id="toolbar-slot"></div>
+<div id="sections"></div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
-  let currentModel = ${safeJson};
+  const init = ${safeJson};
+  let currentModel = init.model;
+  let currentTabs = init.tabs || [];
+  let currentActiveViewId = init.activeViewId;
+  let searchQuery = '';
+  let activeTone = 'all';
 
   function toneClass(tone) {
     if (!tone || tone === 'default') return '';
@@ -195,37 +347,79 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
     return btn;
   }
 
-  function render(model) {
-    const app = document.getElementById('app');
-    app.replaceChildren();
+  function renderTabs() {
+    const bar = document.getElementById('tabs');
+    bar.replaceChildren();
+    if (!currentTabs || currentTabs.length <= 1) {
+      bar.classList.add('hidden');
+      return;
+    }
+    bar.classList.remove('hidden');
+    for (const tab of currentTabs) {
+      const pill = document.createElement('div');
+      pill.className = 'tab-pill' + (tab.viewId === currentActiveViewId ? ' active' : '');
+      const lbl = document.createElement('span');
+      lbl.textContent = tab.tabTitle;
+      pill.appendChild(lbl);
+
+      const close = document.createElement('span');
+      close.className = 'tab-close';
+      close.textContent = '×';
+      close.title = 'Close tab';
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        vscode.postMessage({ type: 'closeTab', viewId: tab.viewId });
+      });
+      pill.appendChild(close);
+
+      pill.addEventListener('click', () => {
+        if (tab.viewId !== currentActiveViewId) {
+          vscode.postMessage({ type: 'switchTab', viewId: tab.viewId });
+        }
+      });
+      bar.appendChild(pill);
+    }
+  }
+
+  function renderChrome() {
+    const chrome = document.getElementById('chrome');
+    chrome.replaceChildren();
 
     const header = document.createElement('div');
     header.className = 'header';
     const titleWrap = document.createElement('div');
     const h1 = document.createElement('h1');
     h1.className = 'heading';
-    h1.textContent = model.heading;
+    h1.textContent = currentModel.heading;
     titleWrap.appendChild(h1);
-    if (model.subheading) {
+    if (currentModel.subheading) {
       const sub = document.createElement('p');
       sub.className = 'subheading';
-      sub.textContent = model.subheading;
+      sub.textContent = currentModel.subheading;
       titleWrap.appendChild(sub);
     }
     header.appendChild(titleWrap);
 
-    if (model.headerActions && model.headerActions.length > 0) {
-      const actWrap = document.createElement('div');
-      actWrap.className = 'actions';
-      for (const a of model.headerActions) actWrap.appendChild(makeBtn(a, false));
-      header.appendChild(actWrap);
+    const actWrap = document.createElement('div');
+    actWrap.className = 'actions';
+    for (const a of (currentModel.headerActions || [])) {
+      actWrap.appendChild(makeBtn(a, false));
     }
-    app.appendChild(header);
+    const copyMdBtn = document.createElement('button');
+    copyMdBtn.textContent = 'Copy Markdown';
+    copyMdBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'copyMarkdown' });
+      copyMdBtn.textContent = 'Copied!';
+      setTimeout(() => { copyMdBtn.textContent = 'Copy Markdown'; }, 1400);
+    });
+    actWrap.appendChild(copyMdBtn);
+    header.appendChild(actWrap);
+    chrome.appendChild(header);
 
-    if (model.metrics && model.metrics.length > 0) {
+    if (currentModel.metrics && currentModel.metrics.length > 0) {
       const grid = document.createElement('div');
       grid.className = 'metrics';
-      for (const m of model.metrics) {
+      for (const m of currentModel.metrics) {
         const card = document.createElement('div');
         card.className = 'metric-card';
         const lbl = document.createElement('div');
@@ -238,20 +432,107 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
         card.appendChild(val);
         grid.appendChild(card);
       }
-      app.appendChild(grid);
+      chrome.appendChild(grid);
+    }
+  }
+
+  function countTones() {
+    const counts = { all: 0, error: 0, warn: 0, info: 0, ok: 0 };
+    for (const sec of (currentModel.sections || [])) {
+      for (const r of (sec.rows || [])) {
+        counts.all += 1;
+        const tone = r.badge && r.badge.tone ? r.badge.tone : 'default';
+        if (tone in counts) counts[tone] += 1;
+      }
+    }
+    return counts;
+  }
+
+  function renderToolbar() {
+    const slot = document.getElementById('toolbar-slot');
+    slot.replaceChildren();
+    const counts = countTones();
+    if (counts.all === 0) return;
+
+    const bar = document.createElement('div');
+    bar.className = 'toolbar';
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'search-input';
+    input.placeholder = 'Filter by file, package, badge, or detail...';
+    input.value = searchQuery;
+    input.addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      renderSections();
+    });
+    bar.appendChild(input);
+
+    const pills = document.createElement('div');
+    pills.className = 'filter-pills';
+    const defs = [
+      { id: 'all', label: 'All' },
+      { id: 'error', label: 'Error' },
+      { id: 'warn', label: 'Warning' },
+      { id: 'info', label: 'Info' },
+      { id: 'ok', label: 'OK' },
+    ];
+    const presentTones = defs.filter((d) => d.id === 'all' || counts[d.id] > 0);
+    if (presentTones.length > 2) {
+      for (const d of presentTones) {
+        const p = document.createElement('button');
+        p.className = 'pill' + (activeTone === d.id ? ' active' : '');
+        p.textContent = d.label + ' (' + counts[d.id] + ')';
+        p.addEventListener('click', () => {
+          activeTone = d.id;
+          renderToolbar();
+          renderSections();
+        });
+        pills.appendChild(p);
+      }
+      bar.appendChild(pills);
     }
 
-    const totalRows = (model.sections || []).reduce((sum, s) => sum + s.rows.length, 0);
+    slot.appendChild(bar);
+  }
+
+  function matchesRow(r) {
+    if (activeTone !== 'all') {
+      const tone = r.badge && r.badge.tone ? r.badge.tone : 'default';
+      if (tone !== activeTone) return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const hay = [
+        r.title || '',
+        r.meta || '',
+        r.detail || '',
+        r.badge ? r.badge.text : '',
+      ].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }
+
+  function renderSections() {
+    const container = document.getElementById('sections');
+    container.replaceChildren();
+
+    const totalRows = (currentModel.sections || []).reduce((sum, s) => sum + s.rows.length, 0);
     if (totalRows === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = model.emptyMessage || 'No items to display.';
-      app.appendChild(empty);
+      empty.textContent = currentModel.emptyMessage || 'No items to display.';
+      container.appendChild(empty);
       return;
     }
 
-    for (const sec of model.sections) {
-      if (!sec.rows || sec.rows.length === 0) continue;
+    let shownCount = 0;
+    for (const sec of currentModel.sections) {
+      const filteredRows = (sec.rows || []).filter(matchesRow);
+      if (filteredRows.length === 0) continue;
+      shownCount += filteredRows.length;
+
       const wrap = document.createElement('div');
       wrap.className = 'section';
 
@@ -259,7 +540,10 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
       head.className = 'section-head';
       const h2 = document.createElement('h2');
       h2.className = 'section-title';
-      h2.textContent = sec.title;
+      h2.textContent =
+        filteredRows.length === sec.rows.length
+          ? sec.title
+          : sec.title + ' — ' + filteredRows.length + ' shown';
       head.appendChild(h2);
       if (sec.subtitle) {
         const sub = document.createElement('span');
@@ -271,7 +555,7 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
 
       const list = document.createElement('div');
       list.className = 'row-list';
-      for (const r of sec.rows) {
+      for (const r of filteredRows) {
         const row = document.createElement('div');
         row.className = 'row';
 
@@ -330,18 +614,39 @@ function buildHtml(nonce: string, initialModel: InspectorViewModel): string {
         list.appendChild(row);
       }
       wrap.appendChild(list);
-      app.appendChild(wrap);
+      container.appendChild(wrap);
     }
+
+    if (shownCount === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'No rows match the current search or severity filter.';
+      container.appendChild(empty);
+    }
+  }
+
+  function renderAll(resetFilters) {
+    if (resetFilters) {
+      searchQuery = '';
+      activeTone = 'all';
+    }
+    renderTabs();
+    renderChrome();
+    renderToolbar();
+    renderSections();
   }
 
   window.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'update' && event.data.model) {
+      const switchedView = event.data.activeViewId !== currentActiveViewId;
       currentModel = event.data.model;
-      render(currentModel);
+      currentTabs = event.data.tabs || currentTabs;
+      currentActiveViewId = event.data.activeViewId || currentModel.viewId;
+      renderAll(switchedView);
     }
   });
 
-  render(currentModel);
+  renderAll(true);
 </script>
 </body>
 </html>`;
@@ -351,40 +656,90 @@ export function openInspectorPanel(
   model: InspectorViewModel,
   onAction: InspectorActionHandler
 ): vscode.WebviewPanel {
-  const existing = activePanels.get(model.viewId);
-  if (existing) {
-    existing.handler = onAction;
-    existing.panel.title = model.tabTitle;
-    existing.panel.reveal(vscode.ViewColumn.Beside, false);
-    void existing.panel.webview.postMessage({ type: 'update', model });
-    return existing.panel;
+  recentTabs.set(model.viewId, { model, handler: onAction });
+  while (recentTabs.size > MAX_RECENT_TABS) {
+    const oldestKey = recentTabs.keys().next().value;
+    if (oldestKey && oldestKey !== model.viewId) {
+      recentTabs.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
+  activeViewId = model.viewId;
+
+  if (sharedPanel) {
+    sharedPanel.reveal(vscode.ViewColumn.Beside, false);
+    postState(sharedPanel, model);
+    return sharedPanel;
   }
 
   const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
   const panel = vscode.window.createWebviewPanel(
-    `archpilot.inspector.${model.viewId}`,
+    'archpilot.inspector',
     model.tabTitle,
     column,
     { enableScripts: true, retainContextWhenHidden: true }
   );
-
-  const entry = { panel, handler: onAction };
-  activePanels.set(model.viewId, entry);
+  sharedPanel = panel;
 
   const nonce = crypto.randomBytes(16).toString('hex');
-  panel.webview.html = buildHtml(nonce, model);
+  panel.webview.html = buildHtml(nonce, model, getTabSummaries());
 
-  panel.webview.onDidReceiveMessage(async (msg: { type?: string; id?: string; payload?: string }) => {
-    if (msg.type !== 'action' || !msg.id) return;
-    const nextModel = await entry.handler(msg.id, msg.payload);
-    if (nextModel) {
-      panel.title = nextModel.tabTitle;
-      void panel.webview.postMessage({ type: 'update', model: nextModel });
+  panel.webview.onDidReceiveMessage(
+    async (msg: { type?: string; id?: string; payload?: string; viewId?: string }) => {
+      if (msg.type === 'switchTab' && msg.viewId) {
+        const target = recentTabs.get(msg.viewId);
+        if (target) {
+          activeViewId = msg.viewId;
+          postState(panel, target.model);
+        }
+        return;
+      }
+
+      if (msg.type === 'closeTab' && msg.viewId) {
+        recentTabs.delete(msg.viewId);
+        if (recentTabs.size === 0) {
+          panel.dispose();
+          return;
+        }
+        if (activeViewId === msg.viewId) {
+          const next = [...recentTabs.values()][recentTabs.size - 1];
+          activeViewId = next.model.viewId;
+          postState(panel, next.model);
+        } else if (activeViewId) {
+          const cur = recentTabs.get(activeViewId);
+          if (cur) postState(panel, cur.model);
+        }
+        return;
+      }
+
+      if (msg.type === 'copyMarkdown' && activeViewId) {
+        const cur = recentTabs.get(activeViewId);
+        if (cur) {
+          await vscode.env.clipboard.writeText(inspectorModelToMarkdown(cur.model));
+          void vscode.window.showInformationMessage(`Copied "${cur.model.heading}" as Markdown.`);
+        }
+        return;
+      }
+
+      if (msg.type === 'action' && msg.id && activeViewId) {
+        const cur = recentTabs.get(activeViewId);
+        if (!cur) return;
+        const nextModel = await cur.handler(msg.id, msg.payload);
+        if (nextModel) {
+          cur.model = nextModel;
+          recentTabs.set(nextModel.viewId, cur);
+          activeViewId = nextModel.viewId;
+          postState(panel, nextModel);
+        }
+      }
     }
-  });
+  );
 
   panel.onDidDispose(() => {
-    activePanels.delete(model.viewId);
+    sharedPanel = undefined;
+    activeViewId = undefined;
+    recentTabs.clear();
   });
 
   return panel;

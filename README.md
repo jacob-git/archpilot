@@ -94,9 +94,10 @@ flowchart LR
 
 ### GitHub Actions
 ```yaml
-- uses: jacob-git/archpilot@v1.0.0
+- uses: jacob-git/archpilot@v1.2.0
   with:
     fail-under: "80"
+    comment-pr: "true" # Optional: post sticky PR/QA handoff brief + OpenAPI & baseline diffs
 ```
 
 ### GitLab CI (`.gitlab-ci.yml`)
@@ -132,7 +133,7 @@ pipelines:
   }
 }
 ```
-Exposes `audit_repo`, `check_boundaries`, `check_diff`, `get_arch_map`, `get_architecture_diagram`, `generate_pr_brief`, and `get_fix_prompt`. *(100% optional: zero penalty in MCP-restricted environments.)*
+Exposes 14 tools: `audit_repo`, `check_boundaries`, `check_diff`, `get_arch_map`, `get_architecture_diagram`, `generate_pr_brief`, `get_fix_prompt`, `plan_migration`, `get_token_breakdown`, `find_orphans`, `find_unused_deps`, `check_openapi_diff`, `compare_baseline`, and `audit_dependencies`. *(100% optional: zero penalty in MCP-restricted environments.)*
 
 ---
 

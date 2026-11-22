@@ -2,6 +2,12 @@
 
 All notable changes to ArchPilot are documented in this file.
 
+## [1.2.0]
+- **MCP Server Parity (`archpilot mcp`):** Added 7 new MCP tools (`plan_migration`, `get_token_breakdown`, `find_orphans`, `find_unused_deps`, `check_openapi_diff`, `compare_baseline`, `audit_dependencies`) bringing total MCP coverage to 14 tools.
+- **Sticky PR Comment in GitHub Action (`action.yml`):** Added `comment-pr: "true"` support to auto-post and update a single sticky Pull Request comment combining the PR & QA Handoff Brief, OpenAPI Breaking-Change Diff, and Architecture Baseline Regression Diff.
+- **Multi-Ecosystem Dependency Auditing & Unused Deps:** Extended `findUnusedDependencies` to Python (`requirements.txt`, `pyproject.toml`), Go (`go.mod`), and Java (`pom.xml`, `build.gradle`), and extended `runDependencyAudit` with `pip-audit`, `govulncheck`, and `osv-scanner` parsers for Python, Go, and Java.
+- **Inspector Webview UX Upgrades:** Added live row search, severity/tone filter pills, a 1-click **Copy Markdown** button on every report, and an in-panel **Report Tabs** bar to switch between recent reports without overwriting previous views.
+
 ## [1.1.0]
 - Replaced QuickPick result lists with a dedicated, theme-aware **ArchPilot Inspector Webview** panel that opens side-by-side in the editor and stays open while you work.
 - Upgraded **Dependency CVE Audit**, **Token Breakdown**, **Upgrade & Migration Plan**, **Git Diff & Blast Radius**, **Architecture Baseline Diff**, **Orphan / Dead Files**, **Unused Dependencies**, and **OpenAPI Breaking Changes** to render rich KPI cards, severity badges, live token bars, and per-row action buttons (`Open`, `Exclude`, `Advisory`, `Run npm audit fix`, `Send to AI Chat`).

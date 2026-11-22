@@ -6,9 +6,10 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 export type DepSeverity = 'critical' | 'high' | 'moderate' | 'low' | 'info';
+export type DepAuditEcosystem = 'npm' | 'python' | 'java' | 'go' | 'rust';
 
 export interface DependencyVulnerability {
-  ecosystem: 'npm' | 'python' | 'rust';
+  ecosystem: DepAuditEcosystem;
   packageName: string;
   severity: DepSeverity;
   title: string;
@@ -40,6 +41,14 @@ export interface DependencyAuditOptions {
 
 const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org';
 
+const SEVERITY_ORDER: Record<DepSeverity, number> = {
+  critical: 0,
+  high: 1,
+  moderate: 2,
+  low: 3,
+  info: 4,
+};
+
 async function fileExists(p: string): Promise<boolean> {
   try {
     await access(p);
@@ -53,7 +62,7 @@ async function execAllowNonZero(
   cmd: string,
   args: string[],
   cwd: string
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number; notFound?: boolean }> {
   try {
     const { stdout, stderr } = await execFileAsync(cmd, args, {
       cwd,
@@ -67,8 +76,18 @@ async function execAllowNonZero(
       stdout: typeof e.stdout === 'string' ? e.stdout : '',
       stderr: typeof e.stderr === 'string' ? e.stderr : '',
       exitCode: typeof e.code === 'number' ? e.code : 1,
+      notFound: e.code === 'ENOENT',
     };
   }
+}
+
+function normalizeOsvSeverity(raw?: string): DepSeverity {
+  const s = (raw ?? '').toUpperCase();
+  if (s === 'CRITICAL') return 'critical';
+  if (s === 'HIGH') return 'high';
+  if (s === 'MODERATE' || s === 'MEDIUM') return 'moderate';
+  if (s === 'LOW') return 'low';
+  return 'high';
 }
 
 export function parseNpmAuditJson(rawJson: string): {
@@ -141,15 +160,204 @@ export function parseNpmAuditJson(rawJson: string): {
     });
   }
 
-  const order: Record<DepSeverity, number> = {
-    critical: 0,
-    high: 1,
-    moderate: 2,
-    low: 3,
-    info: 4,
-  };
-  results.sort((a, b) => order[a.severity] - order[b.severity]);
+  results.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
   return { vulnerabilities: results };
+}
+
+export function parsePipAuditJson(rawJson: string): DependencyVulnerability[] {
+  const results: DependencyVulnerability[] = [];
+  try {
+    const data = JSON.parse(rawJson) as
+      | {
+          dependencies?: Array<{
+            name: string;
+            vulns?: Array<{ id: string; description?: string; fix_versions?: string[] }>;
+          }>;
+        }
+      | Array<{
+          name: string;
+          vulns?: Array<{ id: string; description?: string; fix_versions?: string[] }>;
+        }>;
+    const deps = Array.isArray(data) ? data : (data.dependencies ?? []);
+    for (const dep of deps) {
+      for (const v of dep.vulns ?? []) {
+        results.push({
+          ecosystem: 'python',
+          packageName: dep.name,
+          severity: 'high',
+          title: `${v.id}${v.description ? `: ${v.description.slice(0, 120)}` : ''}`,
+          url: v.id.startsWith('GHSA-')
+            ? `https://github.com/advisories/${v.id}`
+            : v.id.startsWith('CVE-')
+              ? `https://nvd.nist.gov/vuln/detail/${v.id}`
+              : undefined,
+          fixAvailable: Boolean(v.fix_versions && v.fix_versions.length > 0),
+          isBreakingFix: false,
+          fixedVersion: v.fix_versions?.[0],
+        });
+      }
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return results;
+}
+
+export function parseGoVulnCheckJson(rawStream: string): DependencyVulnerability[] {
+  // govulncheck -json outputs a stream of JSON objects (osv definitions + finding entries)
+  const osvById = new Map<
+    string,
+    { id: string; summary?: string; references?: Array<{ url?: string }> }
+  >();
+  const findings: Array<{ osv: string; fixed_version?: string; module?: string }> = [];
+
+  // Parse concatenated or newline-delimited JSON objects
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  const objects: unknown[] = [];
+  for (let i = 0; i < rawStream.length; i++) {
+    const ch = rawStream[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        try {
+          objects.push(JSON.parse(rawStream.slice(start, i + 1)));
+        } catch {
+          // skip malformed block
+        }
+        start = -1;
+      }
+    }
+  }
+
+  for (const obj of objects) {
+    if (!obj || typeof obj !== 'object') continue;
+    const rec = obj as {
+      osv?: { id?: string; summary?: string; references?: Array<{ url?: string }> };
+      finding?: {
+        osv?: string;
+        fixed_version?: string;
+        trace?: Array<{ module?: string; package?: string }>;
+      };
+    };
+    if (rec.osv?.id) {
+      osvById.set(rec.osv.id, {
+        id: rec.osv.id,
+        summary: rec.osv.summary,
+        references: rec.osv.references,
+      });
+    }
+    if (rec.finding?.osv) {
+      const mod = rec.finding.trace?.[0]?.module ?? rec.finding.trace?.[0]?.package ?? 'go-module';
+      findings.push({
+        osv: rec.finding.osv,
+        fixed_version: rec.finding.fixed_version,
+        module: mod,
+      });
+    }
+  }
+
+  const seen = new Set<string>();
+  const results: DependencyVulnerability[] = [];
+  for (const f of findings) {
+    const key = `${f.osv}::${f.module}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const osv = osvById.get(f.osv);
+    results.push({
+      ecosystem: 'go',
+      packageName: f.module ?? 'go-module',
+      severity: 'high',
+      title: `${f.osv}${osv?.summary ? `: ${osv.summary.slice(0, 120)}` : ''}`,
+      url: osv?.references?.[0]?.url ?? `https://pkg.go.dev/vuln/${f.osv}`,
+      fixAvailable: Boolean(f.fixed_version),
+      isBreakingFix: false,
+      fixedVersion: f.fixed_version,
+    });
+  }
+  return results;
+}
+
+export function parseOsvScannerJson(
+  rawJson: string,
+  defaultEcosystem: DepAuditEcosystem
+): DependencyVulnerability[] {
+  const results: DependencyVulnerability[] = [];
+  try {
+    const data = JSON.parse(rawJson) as {
+      results?: Array<{
+        packages?: Array<{
+          package?: { name?: string; ecosystem?: string };
+          vulnerabilities?: Array<{
+            id?: string;
+            summary?: string;
+            database_specific?: { severity?: string };
+            references?: Array<{ url?: string }>;
+            affected?: Array<{ ranges?: Array<{ events?: Array<{ fixed?: string }> }> }>;
+          }>;
+        }>;
+      }>;
+    };
+    const seen = new Set<string>();
+    for (const res of data.results ?? []) {
+      for (const pkgEntry of res.packages ?? []) {
+        const pkgName = pkgEntry.package?.name ?? 'unknown';
+        const ecoRaw = (pkgEntry.package?.ecosystem ?? '').toLowerCase();
+        const ecosystem: DepAuditEcosystem =
+          ecoRaw.includes('maven') || ecoRaw.includes('gradle')
+            ? 'java'
+            : ecoRaw.includes('go')
+              ? 'go'
+              : ecoRaw.includes('pypi')
+                ? 'python'
+                : ecoRaw.includes('crates')
+                  ? 'rust'
+                  : defaultEcosystem;
+
+        for (const v of pkgEntry.vulnerabilities ?? []) {
+          const id = v.id ?? 'OSV';
+          const key = `${ecosystem}::${pkgName}::${id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const fixedVersion = v.affected
+            ?.flatMap((a) => a.ranges ?? [])
+            .flatMap((r) => r.events ?? [])
+            .find((e) => typeof e.fixed === 'string')?.fixed;
+
+          results.push({
+            ecosystem,
+            packageName: pkgName,
+            severity: normalizeOsvSeverity(v.database_specific?.severity),
+            title: `${id}${v.summary ? `: ${v.summary.slice(0, 120)}` : ''}`,
+            url: v.references?.[0]?.url ?? `https://osv.dev/vulnerability/${id}`,
+            fixAvailable: Boolean(fixedVersion),
+            isBreakingFix: false,
+            fixedVersion,
+          });
+        }
+      }
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return results;
 }
 
 export async function runDependencyAudit(
@@ -214,38 +422,74 @@ export async function runDependencyAudit(
   }
 
   // 2. Python (pip-audit if installed locally)
-  if (
-    (await fileExists(path.join(resolvedRoot, 'requirements.txt'))) ||
-    (await fileExists(path.join(resolvedRoot, 'pyproject.toml')))
-  ) {
-    const pyCheck = await execAllowNonZero('pip-audit', ['--format', 'json'], resolvedRoot);
+  const hasReqTxt = await fileExists(path.join(resolvedRoot, 'requirements.txt'));
+  const hasPyproject = await fileExists(path.join(resolvedRoot, 'pyproject.toml'));
+  if (hasReqTxt || hasPyproject) {
+    const pyArgs = hasReqTxt ? ['-r', 'requirements.txt', '--format', 'json'] : ['--format', 'json'];
+    const pyCheck = await execAllowNonZero('pip-audit', pyArgs, resolvedRoot);
     if (pyCheck.stdout.trim().startsWith('{') || pyCheck.stdout.trim().startsWith('[')) {
       ecosystemsChecked.push('python');
-      try {
-        const data = JSON.parse(pyCheck.stdout) as {
-          dependencies?: Array<{
-            name: string;
-            vulns?: Array<{ id: string; description?: string; fix_versions?: string[] }>;
-          }>;
-        };
-        for (const dep of data.dependencies ?? []) {
-          for (const v of dep.vulns ?? []) {
-            vulnerabilities.push({
-              ecosystem: 'python',
-              packageName: dep.name,
-              severity: 'high',
-              title: `${v.id}${v.description ? `: ${v.description.slice(0, 120)}` : ''}`,
-              fixAvailable: Boolean(v.fix_versions && v.fix_versions.length > 0),
-              isBreakingFix: false,
-              fixedVersion: v.fix_versions?.[0],
-            });
-          }
-        }
-      } catch {
-        // ignore parse errors
+      vulnerabilities.push(...parsePipAuditJson(pyCheck.stdout));
+    } else if (pyCheck.notFound) {
+      notes.push('Python manifest detected: install `pip-audit` (`pip install pip-audit`) to enable Python CVE auditing.');
+    }
+  }
+
+  // 3. Go (govulncheck or osv-scanner if installed locally)
+  const hasGoMod = await fileExists(path.join(resolvedRoot, 'go.mod'));
+  if (hasGoMod) {
+    const goCheck = await execAllowNonZero('govulncheck', ['-json', './...'], resolvedRoot);
+    if (!goCheck.notFound && goCheck.stdout.trim().includes('{')) {
+      ecosystemsChecked.push('go');
+      vulnerabilities.push(...parseGoVulnCheckJson(goCheck.stdout));
+    } else {
+      const osvGo = await execAllowNonZero(
+        'osv-scanner',
+        ['--lockfile=go.mod', '--format=json'],
+        resolvedRoot
+      );
+      if (!osvGo.notFound && osvGo.stdout.trim().startsWith('{')) {
+        ecosystemsChecked.push('go');
+        vulnerabilities.push(...parseOsvScannerJson(osvGo.stdout, 'go'));
+      } else {
+        notes.push(
+          'go.mod detected: install `govulncheck` (`go install golang.org/x/vuln/cmd/govulncheck@latest`) or `osv-scanner` to enable Go CVE auditing.'
+        );
       }
     }
   }
+
+  // 4. Java (Maven pom.xml / Gradle build.gradle via osv-scanner if installed locally)
+  const hasPom = await fileExists(path.join(resolvedRoot, 'pom.xml'));
+  const hasGradleLock = await fileExists(path.join(resolvedRoot, 'gradle.lockfile'));
+  const hasGradle =
+    hasGradleLock ||
+    (await fileExists(path.join(resolvedRoot, 'build.gradle'))) ||
+    (await fileExists(path.join(resolvedRoot, 'build.gradle.kts')));
+  if (hasPom || hasGradle) {
+    const lockfile = hasPom ? 'pom.xml' : hasGradleLock ? 'gradle.lockfile' : undefined;
+    if (lockfile) {
+      const osvJava = await execAllowNonZero(
+        'osv-scanner',
+        [`--lockfile=${lockfile}`, '--format=json'],
+        resolvedRoot
+      );
+      if (!osvJava.notFound && osvJava.stdout.trim().startsWith('{')) {
+        ecosystemsChecked.push('java');
+        vulnerabilities.push(...parseOsvScannerJson(osvJava.stdout, 'java'));
+      } else {
+        notes.push(
+          `Java manifest (${lockfile}) detected: install \`osv-scanner\` to enable Java/Maven/Gradle CVE auditing.`
+        );
+      }
+    } else {
+      notes.push(
+        'Gradle project detected without `gradle.lockfile`: enable Gradle dependency locking and install `osv-scanner` for Java CVE auditing.'
+      );
+    }
+  }
+
+  vulnerabilities.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
   const counts = {
     critical: vulnerabilities.filter((v) => v.severity === 'critical').length,
