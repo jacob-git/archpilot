@@ -38,6 +38,15 @@ export {
   generateMigrationWavePrompt,
   suggestMigrationPlaybooks,
 } from './migrations.js';
+export { findOrphanFiles } from './orphans.js';
+export type { OrphanFileInfo, OrphanFilesReport } from './orphans.js';
+export {
+  BASELINE_FILENAME,
+  compareAgainstBaseline,
+  createArchitectureBaseline,
+  saveArchitectureBaseline,
+} from './baseline.js';
+export type { ArchitectureBaseline, BaselineDiffReport } from './baseline.js';
 export type {
   ArchPilotConfig,
   AuditOptions,

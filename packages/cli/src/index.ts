@@ -6,6 +6,8 @@ import {
   analyzeMigration,
   auditRepository,
   buildArchitectureDiagram,
+  compareAgainstBaseline,
+  findOrphanFiles,
   formatHtmlReport,
   formatMarkdown,
   formatSarif,
@@ -17,6 +19,7 @@ import {
   generatePrHandoffBrief,
   generateSmartArchPilotConfig,
   runDependencyAudit,
+  saveArchitectureBaseline,
   type AuditReport,
   type MigrationPlaybookId,
   type Severity,
@@ -148,6 +151,9 @@ async function main(): Promise<void> {
   let npmRegistry: string | undefined;
   let migratePlaybook: MigrationPlaybookId | undefined;
   let writeMigrateMd = false;
+  let orphansMode = false;
+  let saveBaselineMode = false;
+  let compareBaselineMode = false;
   let diffMode = false;
   let failUnder: number | undefined;
 
@@ -183,6 +189,12 @@ async function main(): Promise<void> {
     } else if (arg === '--migrate' || arg === '--migrate-md') {
       migratePlaybook = (args[++i] ?? 'webpack-to-vite') as MigrationPlaybookId;
       if (arg === '--migrate-md') writeMigrateMd = true;
+    } else if (arg === '--orphans') {
+      orphansMode = true;
+    } else if (arg === '--save-baseline') {
+      saveBaselineMode = true;
+    } else if (arg === '--compare-baseline') {
+      compareBaselineMode = true;
     } else if (arg === '--diff') {
       diffMode = true;
     } else if (arg === '--fail-under') {
@@ -206,6 +218,9 @@ Options:
   --registry <url>             Optional npm registry URL for --dep-audit
   --migrate <playbook>         Scan upgrade blockers (webpack-to-vite | spring-boot-3-to-4 | cjs-to-esm | react-18-to-19 | pydantic-v1-to-v2)
   --migrate-md <playbook>      Generate dependency-ordered MIGRATION_PLAN.md
+  --orphans                    Find unreachable/dead source files wasting AI tokens
+  --save-baseline              Save .archpilot-baseline.json snapshot before refactors/upgrades
+  --compare-baseline           Compare current architecture against .archpilot-baseline.json
   --diff                       Analyze git changed files, blast radius, and QA test gaps
   --format <fmt>               Output format: text | json | sarif | markdown | html (default: text)
   --json                       Alias for --format json
@@ -297,6 +312,54 @@ Options:
       }
       console.log('');
     }
+    return;
+  }
+  if (orphansMode) {
+    const res = await findOrphanFiles(resolved);
+    if (format === 'json') {
+      console.log(JSON.stringify(res, null, 2));
+    } else {
+      console.log('');
+      console.log(`${BOLD}ArchPilot Orphan / Dead File Finder${RESET}  ${DIM}${res.rootDir}${RESET}`);
+      console.log(
+        `Orphans: ${res.orphans.length === 0 ? GREEN : YELLOW}${BOLD}${res.orphans.length}${RESET} (~${res.totalWastedTokens.toLocaleString('en-US')} wasted tokens across ${res.totalCodeFiles} code files)`
+      );
+      for (const o of res.orphans.slice(0, 30)) {
+        console.log(`  • ${o.file} (~${o.estimatedTokens.toLocaleString('en-US')} tok)`);
+      }
+      console.log('');
+    }
+    return;
+  }
+  if (saveBaselineMode) {
+    const { baselinePath, baseline } = await saveArchitectureBaseline(resolved);
+    console.log(
+      `Saved ${baselinePath} (Score ${baseline.overallScore}/100, ${baseline.moduleCount} modules, ${baseline.findingSignatures.length} findings).`
+    );
+    return;
+  }
+  if (compareBaselineMode) {
+    const diff = await compareAgainstBaseline(resolved);
+    if (!diff.hasBaseline) {
+      console.error(`No baseline found at ${diff.baselinePath}. Run \`archpilot . --save-baseline\` first.`);
+      process.exitCode = 1;
+      return;
+    }
+    if (format === 'json') {
+      console.log(JSON.stringify(diff, null, 2));
+    } else {
+      const color = diff.status === 'regressed' ? RED : diff.status === 'improved' ? GREEN : CYAN;
+      console.log('');
+      console.log(`${BOLD}ArchPilot Baseline Comparison${RESET}  ${DIM}${resolved}${RESET}`);
+      console.log(
+        `Status: ${color}${BOLD}${diff.status.toUpperCase()}${RESET} · Score: ${diff.baselineScore} -> ${diff.currentScore} (${diff.scoreDelta >= 0 ? '+' : ''}${diff.scoreDelta}) · New regressions: ${diff.newFindings.length} · Resolved: ${diff.resolvedSignatures.length}`
+      );
+      for (const f of diff.newFindings.slice(0, 20)) {
+        console.log(`  ${severityTag(f.severity)} [${f.id}] ${DIM}${f.file ?? ''}${RESET}: ${f.message}`);
+      }
+      console.log('');
+    }
+    if (diff.status === 'regressed') process.exitCode = 1;
     return;
   }
   if (diffMode) {

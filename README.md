@@ -40,6 +40,11 @@ npx archpilot . --dep-audit
 npx archpilot . --migrate webpack-to-vite
 npx archpilot . --migrate-md spring-boot-3-to-4
 
+# Find unreachable/dead files wasting AI tokens, or diff against a saved architecture baseline
+npx archpilot . --orphans
+npx archpilot . --save-baseline
+npx archpilot . --compare-baseline
+
 # Universal CI formats
 npx archpilot . --fail-under 80 --format sarif > archpilot.sarif
 npx archpilot . --format markdown
@@ -80,7 +85,7 @@ flowchart LR
 
 ### GitHub Actions
 ```yaml
-- uses: jacob-git/archpilot@v0.8.0
+- uses: jacob-git/archpilot@v0.9.0
   with:
     fail-under: "80"
 ```

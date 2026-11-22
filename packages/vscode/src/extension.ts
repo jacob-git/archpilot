@@ -25,6 +25,7 @@ import {
   showBlastRadiusPicker,
   showMigrationPlanner,
 } from './reports.js';
+import { showBaselineComparisonPicker, showOrphanFilesPicker } from './insights.js';
 import type { FolderAudit, TreeNode } from './types.js';
 
 function toVsCodeSeverity(sev: Finding['severity']): vscode.DiagnosticSeverity {
@@ -412,6 +413,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('archpilot.planMigration', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to plan upgrade or migration');
       if (audit) await showMigrationPlanner(audit);
+    }),
+
+    vscode.commands.registerCommand('archpilot.compareBaseline', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to compare architecture baseline');
+      if (audit) await showBaselineComparisonPicker(audit);
+    }),
+
+    vscode.commands.registerCommand('archpilot.findOrphans', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to find orphan / dead files');
+      if (audit && (await showOrphanFilesPicker(audit))) await runAudit();
     }),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', handleAgentsMd),

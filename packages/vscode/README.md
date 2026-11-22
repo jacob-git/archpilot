@@ -17,12 +17,14 @@ Right-click any repository in the **ArchPilot sidebar** or directly in the **VS 
 - **1-Click `Reduce AI Token Cost (Exclude Large Files)`** at the top of the right-click menu syncs unignored large token sinks into both `.aiignore` and `.cursorignore`.
 - **Active File Token Counter** in the Status Bar warns before attaching huge files to AI chat.
 - **Compact Repo Map (`ARCHMAP.md`)** generator so coding agents locate modules in 1 read instead of scanning dozens of files.
+- **Orphan / Dead File Finder (`Optimize > Find Orphan / Dead Files`):** Detects unreachable source files wasting AI tokens, with 1-click `.aiignore` exclusion and AI Chat cleanup review.
 
 ### 2. Upgrade & Migration Readiness Planner
 - Right-click any project -> **Audit > Plan Upgrade / Migration...** for offline, dependency-ordered migration planning:
   - Built-in playbooks: **Webpack / CRA -> Vite**, **Spring Boot 3 -> 4**, **CommonJS -> ESM**, **React 18 -> 19**, and **Pydantic v1 -> v2**.
   - **Custom Migration Scan** for any internal or third-party library, plus optional `migrations` guardrails in `archpilot.json` so legacy patterns cannot creep back in.
   - Groups impacted files into **Wave 1 (Leaf)**, **Wave 2 (Mid-Layer)**, and **Wave 3 (Core & Config)**, exports `MIGRATION_PLAN.md`, or sends Wave 1 directly to **AI Chat**.
+- **Architecture Baseline Snapshot & Diff (`Audit > Compare Architecture Baseline`):** Save a baseline before an upgrade or refactor and compare afterward to catch new circular dependencies, boundary breaks, or security regressions.
 
 ### 3. Living Architecture & External Systems Graph
 - Interactive draggable/zoomable graph of your repo's modules plus auto-detected **External Systems** (PostgreSQL, MySQL, MongoDB, Redis, Kafka, AWS, Stripe, OpenAI, Anthropic, Gemini, MCP).
