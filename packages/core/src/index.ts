@@ -47,6 +47,14 @@ export {
   saveArchitectureBaseline,
 } from './baseline.js';
 export type { ArchitectureBaseline, BaselineDiffReport } from './baseline.js';
+export { analyzeTokenBreakdown } from './tokenBreakdown.js';
+export type {
+  FileTokenUsage,
+  FolderTokenUsage,
+  TokenBreakdownReport,
+} from './tokenBreakdown.js';
+export { findUnusedDependencies } from './unusedDeps.js';
+export type { UnusedDependencyInfo, UnusedDepsReport } from './unusedDeps.js';
 export type {
   ArchPilotConfig,
   AuditOptions,

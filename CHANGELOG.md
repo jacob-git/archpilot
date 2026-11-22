@@ -3,6 +3,8 @@
 All notable changes to ArchPilot are documented in this file.
 
 ## [0.9.0]
+- Added **Top Token Consumers Breakdown** (`Optimize > Inspect Token Breakdown` and `--tokens`) showing heaviest folders and files by estimated token count and `$/read`, with 1-click `.aiignore` exclusion.
+- Added **Unused Dependencies Finder** (`Optimize > Find Unused Dependencies` and `--unused-deps`) to flag `package.json` runtime dependencies never imported in source, with 1-click `npm uninstall` and AI Chat review.
 - Added **Orphan / Dead File Finder** (`Optimize > Find Orphan / Dead Files` and `--orphans`) to detect unreachable source files wasting AI agent tokens, with 1-click `.aiignore` exclusion and AI Chat cleanup review.
 - Added **Architecture Baseline Snapshot & Diff** (`Audit > Compare Architecture Baseline`, `--save-baseline`, and `--compare-baseline`) to catch newly introduced circular dependencies, boundary breaks, external-system drift, and security regressions after refactors or upgrades.
 - Added `CHANGELOG.md` for the VS Code Marketplace Changelog tab.

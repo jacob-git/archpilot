@@ -25,7 +25,12 @@ import {
   showBlastRadiusPicker,
   showMigrationPlanner,
 } from './reports.js';
-import { showBaselineComparisonPicker, showOrphanFilesPicker } from './insights.js';
+import {
+  showBaselineComparisonPicker,
+  showOrphanFilesPicker,
+  showTokenBreakdownPicker,
+  showUnusedDepsPicker,
+} from './insights.js';
 import type { FolderAudit, TreeNode } from './types.js';
 
 function toVsCodeSeverity(sev: Finding['severity']): vscode.DiagnosticSeverity {
@@ -423,6 +428,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('archpilot.findOrphans', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to find orphan / dead files');
       if (audit && (await showOrphanFilesPicker(audit))) await runAudit();
+    }),
+
+    vscode.commands.registerCommand('archpilot.tokenBreakdown', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to inspect token breakdown');
+      if (audit && (await showTokenBreakdownPicker(audit))) await runAudit();
+    }),
+
+    vscode.commands.registerCommand('archpilot.findUnusedDeps', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to find unused dependencies');
+      if (audit) await showUnusedDepsPicker(audit);
     }),
 
     vscode.commands.registerCommand('archpilot.generateAgentsMd', handleAgentsMd),

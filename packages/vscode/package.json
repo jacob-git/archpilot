@@ -234,6 +234,18 @@
         "title": "Find Orphan / Dead Files (Save Tokens)",
         "category": "ArchPilot",
         "icon": "$(trash)"
+      },
+      {
+        "command": "archpilot.tokenBreakdown",
+        "title": "Inspect Token Breakdown (Top Folders & Files)",
+        "category": "ArchPilot",
+        "icon": "$(pie-chart)"
+      },
+      {
+        "command": "archpilot.findUnusedDeps",
+        "title": "Find Unused Dependencies",
+        "category": "ArchPilot",
+        "icon": "$(package)"
       }
     ],
     "submenus": [
@@ -455,14 +467,24 @@
           "group": "1_optimize@1"
         },
         {
-          "command": "archpilot.findOrphans",
+          "command": "archpilot.tokenBreakdown",
           "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_optimize@2"
         },
         {
+          "command": "archpilot.findOrphans",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
+          "group": "1_optimize@3"
+        },
+        {
+          "command": "archpilot.findUnusedDeps",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
+          "group": "1_optimize@4"
+        },
+        {
           "command": "archpilot.copyFixPrompt",
           "when": "viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/ || explorerResourceIsRoot",
-          "group": "1_optimize@3"
+          "group": "1_optimize@5"
         },
         {
           "command": "archpilot.selectModelPreset",

@@ -4,10 +4,12 @@ import path from 'node:path';
 import {
   analyzeBlastRadius,
   analyzeMigration,
+  analyzeTokenBreakdown,
   auditRepository,
   buildArchitectureDiagram,
   compareAgainstBaseline,
   findOrphanFiles,
+  findUnusedDependencies,
   formatHtmlReport,
   formatMarkdown,
   formatSarif,
@@ -152,6 +154,8 @@ async function main(): Promise<void> {
   let migratePlaybook: MigrationPlaybookId | undefined;
   let writeMigrateMd = false;
   let orphansMode = false;
+  let tokensMode = false;
+  let unusedDepsMode = false;
   let saveBaselineMode = false;
   let compareBaselineMode = false;
   let diffMode = false;
@@ -191,6 +195,10 @@ async function main(): Promise<void> {
       if (arg === '--migrate-md') writeMigrateMd = true;
     } else if (arg === '--orphans') {
       orphansMode = true;
+    } else if (arg === '--tokens') {
+      tokensMode = true;
+    } else if (arg === '--unused-deps') {
+      unusedDepsMode = true;
     } else if (arg === '--save-baseline') {
       saveBaselineMode = true;
     } else if (arg === '--compare-baseline') {
@@ -219,6 +227,8 @@ Options:
   --migrate <playbook>         Scan upgrade blockers (webpack-to-vite | spring-boot-3-to-4 | cjs-to-esm | react-18-to-19 | pydantic-v1-to-v2)
   --migrate-md <playbook>      Generate dependency-ordered MIGRATION_PLAN.md
   --orphans                    Find unreachable/dead source files wasting AI tokens
+  --tokens                     Show top folders and files by estimated AI token cost
+  --unused-deps                Find unused package.json dependencies never imported in source
   --save-baseline              Save .archpilot-baseline.json snapshot before refactors/upgrades
   --compare-baseline           Compare current architecture against .archpilot-baseline.json
   --diff                       Analyze git changed files, blast radius, and QA test gaps
@@ -326,6 +336,45 @@ Options:
       );
       for (const o of res.orphans.slice(0, 30)) {
         console.log(`  • ${o.file} (~${o.estimatedTokens.toLocaleString('en-US')} tok)`);
+      }
+      console.log('');
+    }
+    return;
+  }
+  if (tokensMode) {
+    const res = await analyzeTokenBreakdown(resolved);
+    if (format === 'json') {
+      console.log(JSON.stringify(res, null, 2));
+    } else {
+      console.log('');
+      console.log(`${BOLD}ArchPilot Token Breakdown${RESET}  ${DIM}${res.rootDir}${RESET}`);
+      console.log(
+        `Total: ~${res.totalTokens.toLocaleString('en-US')} tokens across ${res.totalFiles} files (~$${res.fullReadCostUsd.toFixed(3)}/full read at $${res.inputPerMillionUsd}/1M)`
+      );
+      console.log(`\n${BOLD}Top Folders:${RESET}`);
+      for (const f of res.topFolders) {
+        console.log(`  • ${f.folder.padEnd(28)} ~${f.estimatedTokens.toLocaleString('en-US')} tok (${f.percentOfRepo}%)`);
+      }
+      console.log(`\n${BOLD}Top Files:${RESET}`);
+      for (const f of res.topFiles.slice(0, 10)) {
+        console.log(`  • ${f.file.padEnd(40)} ~${f.estimatedTokens.toLocaleString('en-US')} tok`);
+      }
+      console.log('');
+    }
+    return;
+  }
+  if (unusedDepsMode) {
+    const res = await findUnusedDependencies(resolved);
+    if (format === 'json') {
+      console.log(JSON.stringify(res, null, 2));
+    } else {
+      console.log('');
+      console.log(`${BOLD}ArchPilot Unused Dependencies${RESET}  ${DIM}${res.rootDir}${RESET}`);
+      console.log(
+        `Unused: ${res.unused.length === 0 ? GREEN : YELLOW}${BOLD}${res.unused.length}${RESET} of ${res.totalDependencies} runtime dependencies`
+      );
+      for (const u of res.unused) {
+        console.log(`  • ${u.name}@${u.version} ${DIM}(${u.packageJsonPath})${RESET}`);
       }
       console.log('');
     }

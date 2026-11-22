@@ -4,8 +4,10 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  analyzeTokenBreakdown,
   compareAgainstBaseline,
   findOrphanFiles,
+  findUnusedDependencies,
   saveArchitectureBaseline,
 } from '../src/index.js';
 
@@ -80,6 +82,47 @@ test('baseline snapshot detects newly introduced regressions and resolved issues
       const clean = await compareAgainstBaseline(dir);
       assert.equal(clean.status, 'unchanged');
       assert.equal(clean.newFindings.length, 0);
+    }
+  );
+});
+
+test('analyzeTokenBreakdown ranks heaviest folders and files accurately', async () => {
+  await withTempRepo(
+    {
+      'src/small.ts': 'export const x = 1;\n',
+      'data/generated/huge.json': JSON.stringify({ items: Array.from({ length: 200 }, (_, i) => `item-${i}`) }),
+    },
+    async (dir) => {
+      const res = await analyzeTokenBreakdown(dir, 3);
+      assert.equal(res.topFolders[0].folder, 'data/generated');
+      assert.equal(res.topFiles[0].file, 'data/generated/huge.json');
+      assert.ok(res.totalTokens > 200);
+      assert.ok(res.fullReadCostUsd > 0);
+    }
+  );
+});
+
+test('findUnusedDependencies flags unimported package.json dependencies while keeping imported and script-referenced ones', async () => {
+  await withTempRepo(
+    {
+      'package.json': JSON.stringify({
+        name: 'deps-demo',
+        scripts: { start: 'tsx src/index.ts' },
+        dependencies: {
+          zod: '^3.22.0',
+          lodash: '^4.17.21',
+          tsx: '^4.0.0',
+        },
+      }),
+      'src/index.ts': 'import { z } from "zod";\nexport const s = z.string();\n',
+    },
+    async (dir) => {
+      const res = await findUnusedDependencies(dir);
+      assert.equal(res.totalDependencies, 3);
+      assert.deepEqual(
+        res.unused.map((u) => u.name),
+        ['lodash']
+      );
     }
   );
 });

@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { access, readFile, writeFile } from 'node:fs/promises';
 import {
+  analyzeTokenBreakdown,
   BASELINE_FILENAME,
   compareAgainstBaseline,
   findOrphanFiles,
+  findUnusedDependencies,
   saveArchitectureBaseline,
 } from '@archpilot/core';
 import type { FolderAudit } from './types.js';
@@ -239,6 +241,186 @@ export async function showBaselineComparisonPicker(audit: FolderAudit): Promise<
         editor.selection = new vscode.Selection(pos, pos);
         editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
       }
+    }
+  }
+}
+
+export async function showTokenBreakdownPicker(audit: FolderAudit): Promise<boolean> {
+  const cfg = vscode.workspace.getConfiguration('archpilot');
+  const rate = cfg.get<number>('costPerMillionInputTokens', 3);
+
+  const res = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `ArchPilot: Analyzing token breakdown for ${audit.name}...`,
+      cancellable: false,
+    },
+    () => analyzeTokenBreakdown(audit.rootDir, rate)
+  );
+
+  interface BreakdownPick extends vscode.QuickPickItem {
+    kindType?: 'folder' | 'file';
+    relPath?: string;
+    tokens?: number;
+  }
+
+  const items: BreakdownPick[] = [
+    {
+      label: `Top Folders (~${res.totalTokens.toLocaleString('en-US')} total tokens · ~$${res.fullReadCostUsd.toFixed(3)}/full read at $${rate}/1M)`,
+      kind: vscode.QuickPickItemKind.Separator,
+    },
+    ...res.topFolders.map((f) => ({
+      label: `$(folder) ${f.folder}`,
+      description: `~${f.estimatedTokens.toLocaleString('en-US')} tok (${f.percentOfRepo}%) · ~$${f.costPerReadUsd.toFixed(4)}/read`,
+      detail: `${f.fileCount} file${f.fileCount === 1 ? '' : 's'} (click to exclude folder in .aiignore)`,
+      kindType: 'folder' as const,
+      relPath: f.folder === '(root)' ? undefined : f.folder,
+      tokens: f.estimatedTokens,
+    })),
+    {
+      label: 'Top Heaviest Files',
+      kind: vscode.QuickPickItemKind.Separator,
+    },
+    ...res.topFiles.map((f) => ({
+      label: `$(file-code) ${f.file}`,
+      description: `~${f.estimatedTokens.toLocaleString('en-US')} tok · ~$${f.costPerReadUsd.toFixed(4)}/read`,
+      kindType: 'file' as const,
+      relPath: f.file,
+      tokens: f.estimatedTokens,
+    })),
+  ];
+
+  const picked = await vscode.window.showQuickPick(items, {
+    title: `Token Breakdown: ${audit.name}`,
+    placeHolder: 'Select a folder or file to exclude in .aiignore or open',
+  });
+  if (!picked || !picked.relPath) return false;
+
+  if (picked.kindType === 'folder') {
+    const confirm = await vscode.window.showInformationMessage(
+      `Exclude folder "${picked.relPath}/" (~${(picked.tokens ?? 0).toLocaleString('en-US')} tokens) in .aiignore & .cursorignore?`,
+      'Exclude Folder'
+    );
+    if (confirm === 'Exclude Folder') {
+      const entry = `${picked.relPath}/`;
+      await appendToIgnoreFile(path.join(audit.rootDir, '.aiignore'), [entry]);
+      await appendToIgnoreFile(path.join(audit.rootDir, '.cursorignore'), [entry]);
+      void vscode.window.showInformationMessage(`Excluded "${entry}" in .aiignore & .cursorignore.`);
+      return true;
+    }
+    return false;
+  }
+
+  const action = await vscode.window.showQuickPick(
+    [
+      { label: '$(filter) Exclude in .aiignore & .cursorignore', action: 'ignore' as const },
+      { label: '$(go-to-file) Open File', action: 'open' as const },
+    ],
+    { placeHolder: `Action for ${picked.relPath}` }
+  );
+  if (action?.action === 'ignore') {
+    await appendToIgnoreFile(path.join(audit.rootDir, '.aiignore'), [picked.relPath]);
+    await appendToIgnoreFile(path.join(audit.rootDir, '.cursorignore'), [picked.relPath]);
+    void vscode.window.showInformationMessage(
+      `Excluded "${picked.relPath}" in .aiignore & .cursorignore.`
+    );
+    return true;
+  }
+  if (action?.action === 'open') {
+    const full = path.join(audit.rootDir, picked.relPath);
+    if (await fileExists(full)) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(full));
+    }
+  }
+  return false;
+}
+
+export async function showUnusedDepsPicker(audit: FolderAudit): Promise<void> {
+  const res = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `ArchPilot: Scanning ${audit.name} for unused dependencies...`,
+      cancellable: false,
+    },
+    () => findUnusedDependencies(audit.rootDir)
+  );
+
+  if (res.totalDependencies === 0) {
+    void vscode.window.showInformationMessage(`No package.json runtime dependencies found in ${audit.name}.`);
+    return;
+  }
+
+  if (res.unused.length === 0) {
+    void vscode.window.showInformationMessage(
+      `All ${res.totalDependencies} runtime dependencies in ${audit.name} are referenced.`
+    );
+    return;
+  }
+
+  interface DepPick extends vscode.QuickPickItem {
+    action?: 'uninstallRoot' | 'aiChat' | 'openPkg';
+    pkgPath?: string;
+  }
+
+  const rootUnused = res.unused.filter((u) => u.packageJsonPath === 'package.json').map((u) => u.name);
+  const items: DepPick[] = [];
+
+  if (rootUnused.length > 0) {
+    items.push({
+      label: `$(terminal) Run npm uninstall (${rootUnused.length} root package${rootUnused.length === 1 ? '' : 's'})`,
+      description: rootUnused.slice(0, 4).join(', ') + (rootUnused.length > 4 ? '...' : ''),
+      action: 'uninstallRoot',
+    });
+  }
+
+  items.push(
+    {
+      label: '$(comment-discussion) Review & Remove Unused Dependencies with AI Chat',
+      description: `${res.unused.length} candidate${res.unused.length === 1 ? '' : 's'}`,
+      action: 'aiChat',
+    },
+    {
+      label: `Unused Runtime Dependencies (${res.unused.length} of ${res.totalDependencies})`,
+      kind: vscode.QuickPickItemKind.Separator,
+    },
+    ...res.unused.map((u) => ({
+      label: `$(package) ${u.name}`,
+      description: `${u.version} · ${u.packageJsonPath}`,
+      action: 'openPkg' as const,
+      pkgPath: u.packageJsonPath,
+    }))
+  );
+
+  const picked = await vscode.window.showQuickPick(items, {
+    title: `Unused Dependencies in ${audit.name}`,
+    placeHolder: 'Uninstall, review with AI Chat, or open package.json',
+  });
+  if (!picked) return;
+
+  if (picked.action === 'uninstallRoot' && rootUnused.length > 0) {
+    const term = vscode.window.createTerminal({
+      name: `ArchPilot: npm uninstall (${audit.name})`,
+      cwd: audit.rootDir,
+    });
+    term.show();
+    term.sendText(`npm uninstall ${rootUnused.join(' ')}`);
+  } else if (picked.action === 'aiChat') {
+    const prompt = [
+      `ArchPilot detected ${res.unused.length} runtime dependencies in **${audit.name}** that are not directly imported in source files.`,
+      'Please verify whether any are needed implicitly (peer/plugin/CLI runtime) and safely remove the truly unused ones:',
+      '',
+      ...res.unused.map((u) => `- \`${u.name}\` (${u.version}) in \`${u.packageJsonPath}\``),
+    ].join('\n');
+    try {
+      await vscode.commands.executeCommand('workbench.action.chat.open', { query: prompt });
+    } catch {
+      await vscode.env.clipboard.writeText(prompt);
+      void vscode.window.showInformationMessage('Copied unused dependencies prompt to clipboard.');
+    }
+  } else if (picked.action === 'openPkg' && picked.pkgPath) {
+    const full = path.join(audit.rootDir, picked.pkgPath);
+    if (await fileExists(full)) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(full));
     }
   }
 }
