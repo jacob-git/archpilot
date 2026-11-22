@@ -368,7 +368,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const rootDir =
       rootDirFromNode(node) ?? (await pickWorkspaceFolder('Select project folder for AGENTS.md'));
     if (!rootDir) return;
-    if (await generateOrUpdateAgentsMd(rootDir)) await runAudit();
+    await generateOrUpdateAgentsMd(rootDir, runAudit);
   };
 
   context.subscriptions.push(
@@ -655,10 +655,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
 
     vscode.commands.registerCommand('archpilot.selectModelPreset', async () => {
-      if (await selectModelPresetPicker()) {
+      await selectModelPresetPicker(async () => {
         updateActiveFileTokens(vscode.window.activeTextEditor);
         await runAudit();
-      }
+      });
     }),
 
     vscode.commands.registerCommand('archpilot.optimizeTokenCost', async (node?: CommandTarget) => {

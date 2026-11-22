@@ -294,105 +294,69 @@ export async function runDependencyAuditPicker(audit: FolderAudit): Promise<void
 
 export async function showMigrationPlanner(audit: FolderAudit): Promise<void> {
   const playbooks = await suggestMigrationPlaybooks(audit.rootDir);
+  let activePlan: Awaited<ReturnType<typeof analyzeMigration>> | undefined;
 
-  interface PlaybookPick extends vscode.QuickPickItem {
-    playbookId?: MigrationPlaybookId;
-    customRule?: MigrationRuleConfig;
-    isAdHocCustom?: boolean;
-  }
-
-  const pickItems: PlaybookPick[] = [];
-  const recommended = playbooks.filter((p) => p.recommended);
-  const others = playbooks.filter((p) => !p.recommended);
-
-  if (recommended.length > 0) {
-    pickItems.push({ label: 'Recommended for this repository', kind: vscode.QuickPickItemKind.Separator });
-    for (const p of recommended) {
-      pickItems.push({
-        label: `$(rocket) ${p.name}`,
-        description: p.reason ?? '',
-        detail: p.description,
-        playbookId: p.id,
-        customRule: p.customRule,
+  const buildPlaybookListModel = (): InspectorViewModel => {
+    const recommended = playbooks.filter((p) => p.recommended);
+    const others = playbooks.filter((p) => !p.recommended);
+    const sections: InspectorSection[] = [];
+    if (recommended.length > 0) {
+      sections.push({
+        title: 'Recommended for This Repository',
+        rows: recommended.map((p, i) => ({
+          title: p.name,
+          badge: { text: 'Recommended', tone: 'ok' },
+          meta: p.reason,
+          detail: p.description,
+          actions: [{ id: 'runPlaybook', label: 'Run Scan', primary: true, payload: `rec::${i}` }],
+        })),
       });
     }
-  }
-
-  if (others.length > 0) {
-    pickItems.push({ label: 'Other Built-In Upgrade Playbooks', kind: vscode.QuickPickItemKind.Separator });
-    for (const p of others) {
-      pickItems.push({
-        label: `$(tools) ${p.name}`,
-        detail: p.description,
-        playbookId: p.id,
+    if (others.length > 0) {
+      sections.push({
+        title: 'Other Built-In Upgrade Playbooks',
+        rows: others.map((p, i) => ({
+          title: p.name,
+          detail: p.description,
+          actions: [{ id: 'runPlaybook', label: 'Run Scan', payload: `oth::${i}` }],
+        })),
       });
     }
-  }
-
-  pickItems.push({ label: 'Custom Upgrade / Library Migration', kind: vscode.QuickPickItemKind.Separator });
-  pickItems.push({
-    label: '$(edit) Custom Migration Scan...',
-    description: 'Search for any legacy import or code pattern',
-    detail: 'Example: moment -> dayjs, legacy-auth-sdk -> auth-v2, or custom regex',
-    playbookId: 'custom',
-    isAdHocCustom: true,
-  });
-
-  const selected = await vscode.window.showQuickPick(pickItems, {
-    title: `ArchPilot Upgrade & Migration Planner: ${audit.name}`,
-    placeHolder: 'Choose an upgrade playbook or run a custom migration scan',
-  });
-  if (!selected || !selected.playbookId) return;
-
-  let customRule = selected.customRule;
-  if (selected.isAdHocCustom) {
-    const name = await vscode.window.showInputBox({
-      title: 'Custom Migration Name',
-      prompt: 'Enter a short name for this upgrade (e.g. moment -> dayjs)',
-      placeHolder: 'moment -> dayjs',
+    sections.push({
+      title: 'Custom Library or Framework Migration',
+      rows: [
+        {
+          title: 'Custom Migration Scan...',
+          detail: 'Flag any legacy import or regex pattern (e.g., moment -> dayjs, legacy-auth-sdk -> auth-v2)',
+          actions: [{ id: 'runCustom', label: 'Configure & Scan' }],
+        },
+      ],
     });
-    if (!name) return;
-    const importInput = await vscode.window.showInputBox({
-      title: 'Legacy Imports to Replace (optional)',
-      prompt: 'Comma-separated legacy package/import names to flag (leave blank if using a code pattern)',
-      placeHolder: 'moment, legacy-auth-sdk',
-    });
-    const patternInput = await vscode.window.showInputBox({
-      title: 'Legacy Code Pattern Regex (optional)',
-      prompt: 'Optional regex pattern to flag in source/config files',
-      placeHolder: 'process\\.env\\.REACT_APP_',
-    });
-    const forbidImports = (importInput ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const forbidPatterns = patternInput?.trim() ? [patternInput.trim()] : [];
-    if (forbidImports.length === 0 && forbidPatterns.length === 0) {
-      void vscode.window.showWarningMessage('Enter at least one legacy import or regex pattern to scan.');
-      return;
-    }
-    customRule = {
-      name: name.trim(),
-      forbidImports,
-      forbidPatterns,
-      suggestion: `Migrate legacy usage as part of "${name.trim()}".`,
+    return {
+      viewId: `migration-${audit.rootDir}`,
+      tabTitle: `Upgrade Planner: ${audit.name}`,
+      heading: `Upgrade & Migration Readiness Planner: ${audit.name}`,
+      subheading: 'Choose a playbook to scan blockers and generate dependency-ordered migration waves',
+      metrics: [
+        { label: 'Recommended', value: String(recommended.length), tone: recommended.length > 0 ? 'ok' : 'default' },
+        { label: 'Built-In Playbooks', value: String(playbooks.length) },
+      ],
+      sections,
     };
-  }
+  };
 
-  const plan = await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: `ArchPilot: Scanning ${audit.name} for migration blockers...`,
-      cancellable: false,
-    },
-    () => analyzeMigration(audit.rootDir, { playbookId: selected.playbookId!, customRule })
-  );
-
-  const effortTone =
-    plan.estimatedEffort === 'high' ? 'error' : plan.estimatedEffort === 'medium' ? 'warn' : 'ok';
-
-  openInspectorPanel(
-    {
+  const buildPlanModel = (plan: Awaited<ReturnType<typeof analyzeMigration>>): InspectorViewModel => {
+    const effortTone =
+      plan.estimatedEffort === 'high' ? 'error' : plan.estimatedEffort === 'medium' ? 'warn' : 'ok';
+    const headerActions: InspectorAction[] = [{ id: 'back', label: 'All Playbooks' }];
+    if (plan.totalBlockers > 0) {
+      headerActions.push(
+        { id: 'writeMd', label: 'Generate MIGRATION_PLAN.md', primary: true },
+        { id: 'aiWave1', label: `Send Wave 1 to AI Chat (${plan.waves[0]?.files.length ?? 0} files)` },
+        { id: 'copyWave1', label: 'Copy Wave 1 Prompt' }
+      );
+    }
+    return {
       viewId: `migration-${audit.rootDir}`,
       tabTitle: `Migration: ${audit.name}`,
       heading: `Upgrade Plan: ${plan.name}`,
@@ -403,14 +367,7 @@ export async function showMigrationPlanner(audit: FolderAudit): Promise<void> {
         { label: 'Waves', value: String(plan.waves.length) },
         { label: 'Effort', value: plan.estimatedEffort.toUpperCase(), tone: effortTone },
       ],
-      headerActions:
-        plan.totalBlockers > 0
-          ? [
-              { id: 'writeMd', label: 'Generate MIGRATION_PLAN.md', primary: true },
-              { id: 'aiWave1', label: `Send Wave 1 to AI Chat (${plan.waves[0]?.files.length ?? 0} files)` },
-              { id: 'copyWave1', label: 'Copy Wave 1 Prompt' },
-            ]
-          : [],
+      headerActions,
       emptyMessage: `0 migration blockers found in ${audit.name} for "${plan.name}".`,
       sections: plan.waves.map((wave) => ({
         title: `${wave.label} (${wave.files.length} files)`,
@@ -429,163 +386,256 @@ export async function showMigrationPlanner(audit: FolderAudit): Promise<void> {
           };
         }),
       })),
-    },
-    async (actionId, payload) => {
-      if (actionId === 'writeMd') {
-        const target = path.join(audit.rootDir, 'MIGRATION_PLAN.md');
-        await writeFile(target, generateMigrationPlanMd(plan), 'utf8');
-        await openRelFile(audit.rootDir, 'MIGRATION_PLAN.md');
-      } else if (actionId === 'aiWave1') {
-        await sendPromptToAiChat(generateMigrationWavePrompt(plan, plan.waves[0]?.wave), 'Wave 1 migration');
-      } else if (actionId === 'copyWave1') {
-        await vscode.env.clipboard.writeText(generateMigrationWavePrompt(plan, plan.waves[0]?.wave));
-        void vscode.window.showInformationMessage('Copied Wave 1 migration prompt to clipboard.');
-      } else if (actionId === 'open' && payload) {
-        const [rel, lineStr] = payload.split('::');
-        await openRelFile(audit.rootDir, rel, lineStr ? Number(lineStr) : undefined);
-      }
+    };
+  };
+
+  const recommended = playbooks.filter((p) => p.recommended);
+  const others = playbooks.filter((p) => !p.recommended);
+
+  openInspectorPanel(buildPlaybookListModel(), async (actionId, payload) => {
+    if (actionId === 'back') {
+      activePlan = undefined;
+      return buildPlaybookListModel();
     }
-  );
+    if (actionId === 'runPlaybook' && payload) {
+      const [group, idxStr] = payload.split('::');
+      const pb = (group === 'rec' ? recommended : others)[Number(idxStr)];
+      if (!pb) return;
+      activePlan = await analyzeMigration(audit.rootDir, {
+        playbookId: pb.id,
+        customRule: pb.customRule,
+      });
+      return buildPlanModel(activePlan);
+    }
+    if (actionId === 'runCustom') {
+      const name = await vscode.window.showInputBox({
+        title: 'Custom Migration Name',
+        prompt: 'Enter a short name for this upgrade (e.g. moment -> dayjs)',
+        placeHolder: 'moment -> dayjs',
+      });
+      if (!name) return;
+      const importInput = await vscode.window.showInputBox({
+        title: 'Legacy Imports to Replace (optional)',
+        prompt: 'Comma-separated legacy package/import names to flag',
+        placeHolder: 'moment, legacy-auth-sdk',
+      });
+      const patternInput = await vscode.window.showInputBox({
+        title: 'Legacy Code Pattern Regex (optional)',
+        prompt: 'Optional regex pattern to flag in source/config files',
+        placeHolder: 'process\\.env\\.REACT_APP_',
+      });
+      const forbidImports = (importInput ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const forbidPatterns = patternInput?.trim() ? [patternInput.trim()] : [];
+      if (forbidImports.length === 0 && forbidPatterns.length === 0) {
+        void vscode.window.showWarningMessage('Enter at least one legacy import or regex pattern.');
+        return;
+      }
+      activePlan = await analyzeMigration(audit.rootDir, {
+        playbookId: 'custom',
+        customRule: {
+          name: name.trim(),
+          forbidImports,
+          forbidPatterns,
+          suggestion: `Migrate legacy usage as part of "${name.trim()}".`,
+        },
+      });
+      return buildPlanModel(activePlan);
+    }
+    if (actionId === 'writeMd' && activePlan) {
+      const target = path.join(audit.rootDir, 'MIGRATION_PLAN.md');
+      await writeFile(target, generateMigrationPlanMd(activePlan), 'utf8');
+      await openRelFile(audit.rootDir, 'MIGRATION_PLAN.md');
+    } else if (actionId === 'aiWave1' && activePlan) {
+      await sendPromptToAiChat(
+        generateMigrationWavePrompt(activePlan, activePlan.waves[0]?.wave),
+        'Wave 1 migration'
+      );
+    } else if (actionId === 'copyWave1' && activePlan) {
+      await vscode.env.clipboard.writeText(
+        generateMigrationWavePrompt(activePlan, activePlan.waves[0]?.wave)
+      );
+      void vscode.window.showInformationMessage('Copied Wave 1 migration prompt to clipboard.');
+    } else if (actionId === 'open' && payload) {
+      const [rel, lineStr] = payload.split('::');
+      await openRelFile(audit.rootDir, rel, lineStr ? Number(lineStr) : undefined);
+    }
+  });
 }
 
-export async function generateOrUpdateAgentsMd(rootDir: string): Promise<boolean> {
+export async function generateOrUpdateAgentsMd(
+  rootDir: string,
+  onUpdated?: () => Promise<void>
+): Promise<boolean> {
   const target = path.join(rootDir, 'AGENTS.md');
   const freshContent = await generateAgentsMd(rootDir);
 
   if (!(await fileExists(target))) {
     await writeFile(target, freshContent, 'utf8');
-    const doc = await vscode.workspace.openTextDocument(target);
-    await vscode.window.showTextDocument(doc);
-    return true;
-  }
-
-  const picked = await vscode.window.showQuickPick(
-    [
-      {
-        label: '$(comment-discussion) Update with AI Chat (Preserve Custom Rules)',
-        description: 'Recommended',
-        detail: 'Merges newly detected stack, scripts, and structure into your existing AGENTS.md',
-        action: 'aiMerge' as const,
-      },
-      {
-        label: '$(refresh) Replace with Fresh Generated AGENTS.md',
-        detail: 'Overwrites AGENTS.md with a clean template scanned from the current repo',
-        action: 'replace' as const,
-      },
-      {
-        label: '$(go-to-file) Open Current AGENTS.md',
-        detail: 'Review or edit the existing file manually',
-        action: 'open' as const,
-      },
-    ],
-    {
-      title: `AGENTS.md already exists in ${path.basename(rootDir)}`,
-      placeHolder: 'Choose how to update AGENTS.md',
-    }
-  );
-  if (!picked) return false;
-
-  if (picked.action === 'open') {
-    const doc = await vscode.workspace.openTextDocument(target);
-    await vscode.window.showTextDocument(doc);
-    return false;
-  }
-
-  if (picked.action === 'replace') {
-    await writeFile(target, freshContent, 'utf8');
-    const doc = await vscode.workspace.openTextDocument(target);
-    await vscode.window.showTextDocument(doc);
-    void vscode.window.showInformationMessage('Replaced AGENTS.md with a freshly generated template.');
+    await openRelFile(rootDir, 'AGENTS.md');
+    if (onUpdated) await onUpdated();
     return true;
   }
 
   const existing = await readFile(target, 'utf8');
-  const prompt = [
-    `Please update \`AGENTS.md\` in **${path.basename(rootDir)}** so it reflects the current repository structure, scripts, and stack while preserving all custom team rules and conventions.`,
-    '',
-    'Keep the updated file concise (under 2,500 tokens) and remove any stale file paths or dead npm scripts.',
-    '',
-    '### Freshly detected repository overview:',
-    '```markdown',
-    freshContent.trim(),
-    '```',
-    '',
-    '### Current AGENTS.md:',
-    '```markdown',
-    existing.slice(0, 6000).trim(),
-    '```',
-  ].join('\n');
+  const existingTokens = Math.ceil(existing.length / 4);
+  const freshTokens = Math.ceil(freshContent.length / 4);
+  const repoName = path.basename(rootDir);
 
-  try {
-    await vscode.commands.executeCommand('workbench.action.chat.open', { query: prompt });
-  } catch {
-    await vscode.env.clipboard.writeText(prompt);
-    void vscode.window.showInformationMessage('Copied AGENTS.md update prompt to clipboard.');
-  }
+  openInspectorPanel(
+    {
+      viewId: `agents-${rootDir}`,
+      tabTitle: `AGENTS.md: ${repoName}`,
+      heading: `Update AGENTS.md: ${repoName}`,
+      subheading: 'AGENTS.md already exists in this repository. Choose how you want to update it.',
+      metrics: [
+        { label: 'Current Size', value: `~${existingTokens.toLocaleString('en-US')} tok`, tone: existingTokens > 3000 ? 'warn' : 'ok' },
+        { label: 'Fresh Template', value: `~${freshTokens.toLocaleString('en-US')} tok`, tone: 'ok' },
+      ],
+      sections: [
+        {
+          title: 'Update Options',
+          rows: [
+            {
+              title: 'Update with AI Chat (Preserve Custom Rules)',
+              badge: { text: 'Recommended', tone: 'ok' },
+              detail: 'Merges newly detected stack, scripts, and structure into your existing AGENTS.md without losing custom conventions.',
+              actions: [{ id: 'aiMerge', label: 'Open AI Chat', primary: true }],
+            },
+            {
+              title: 'Replace with Fresh Generated AGENTS.md',
+              detail: 'Overwrites AGENTS.md with a clean template scanned from the current repository.',
+              actions: [{ id: 'replace', label: 'Replace File' }],
+            },
+            {
+              title: 'Open Current AGENTS.md',
+              detail: 'Review or edit the existing file manually in the editor.',
+              actions: [{ id: 'open', label: 'Open File' }],
+            },
+          ],
+        },
+      ],
+    },
+    async (actionId) => {
+      if (actionId === 'open') {
+        await openRelFile(rootDir, 'AGENTS.md');
+      } else if (actionId === 'replace') {
+        await writeFile(target, freshContent, 'utf8');
+        await openRelFile(rootDir, 'AGENTS.md');
+        void vscode.window.showInformationMessage('Replaced AGENTS.md with a freshly generated template.');
+        if (onUpdated) await onUpdated();
+      } else if (actionId === 'aiMerge') {
+        const prompt = [
+          `Please update \`AGENTS.md\` in **${repoName}** so it reflects the current repository structure, scripts, and stack while preserving all custom team rules and conventions.`,
+          '',
+          'Keep the updated file concise (under 2,500 tokens) and remove any stale file paths or dead npm scripts.',
+          '',
+          '### Freshly detected repository overview:',
+          '```markdown',
+          freshContent.trim(),
+          '```',
+          '',
+          '### Current AGENTS.md:',
+          '```markdown',
+          existing.slice(0, 6000).trim(),
+          '```',
+        ].join('\n');
+        await sendPromptToAiChat(prompt, 'AGENTS.md update');
+      }
+    }
+  );
   return false;
 }
 
-export async function selectModelPresetPicker(): Promise<boolean> {
-  interface PricingPickItem extends vscode.QuickPickItem {
-    rate: number;
-    short: string;
-  }
+export async function selectModelPresetPicker(onChanged?: () => Promise<void>): Promise<void> {
+  const buildModel = async (): Promise<InspectorViewModel> => {
+    const cfg = vscode.workspace.getConfiguration('archpilot');
+    const activeRate = cfg.get<number>('costPerMillionInputTokens', 3);
+    const activeLabel = cfg.get<string>('modelPresetLabel', `Standard ($${activeRate}/1M)`);
 
-  const items: PricingPickItem[] = [];
-  const liveModels = await getDetectedChatModels();
-  const seen = new Set<string>();
-
-  if (liveModels.length > 0) {
-    items.push({
-      label: 'Detected in VS Code / Copilot',
-      kind: vscode.QuickPickItemKind.Separator,
-      rate: 0,
-      short: '',
-    });
+    const liveModels = await getDetectedChatModels();
+    const seen = new Set<string>();
+    const detectedRows = [];
     for (const m of liveModels) {
       const displayName = m.name || m.family || m.id;
       const key = displayName.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
       const rate = estimateModelRateUsd(`${m.id} ${m.name ?? ''} ${m.family ?? ''}`);
-      items.push({
-        label: displayName,
-        description: `~$${rate}/1M input${m.vendor ? ` · ${m.vendor}` : ''}`,
-        rate,
-        short: `${displayName} ($${rate}/1M)`,
+      const short = `${displayName} ($${rate}/1M)`;
+      detectedRows.push({
+        title: displayName,
+        badge: activeLabel === short ? { text: 'Active', tone: 'ok' as const } : undefined,
+        meta: `~$${rate}/1M input${m.vendor ? ` · ${m.vendor}` : ''}`,
+        actions: [{ id: 'pick', label: 'Select', primary: activeLabel !== short, payload: `${rate}::${short}` }],
       });
     }
-  }
 
-  items.push(
-    { label: 'General Pricing Tiers', kind: vscode.QuickPickItemKind.Separator, rate: 0, short: '' },
-    { label: 'Fast / Flash / Mini', description: '$0.30/1M input (Gemini Flash, GPT-4o-mini, o4-mini)', rate: 0.3, short: 'Fast ($0.30/1M)' },
-    { label: 'Standard / Sonnet / GPT-4o', description: '$3/1M input (Claude Sonnet, GPT-4o, GPT-4.1)', rate: 3, short: 'Standard ($3/1M)' },
-    { label: 'High-Reasoning / GPT-5+ / o3', description: '$5/1M input (GPT-5, GPT-6, o3)', rate: 5, short: 'Reasoning ($5/1M)' },
-    { label: 'Frontier / Opus', description: '$15/1M input (Claude Opus)', rate: 15, short: 'Frontier ($15/1M)' },
-    { label: 'Custom rate...', description: 'Enter any exact $ per 1M input token price', rate: -1, short: 'Custom' }
-  );
+    const tiers = [
+      { title: 'Fast / Flash / Mini', detail: 'Gemini Flash, GPT-4o-mini, o4-mini', rate: 0.3, short: 'Fast ($0.30/1M)' },
+      { title: 'Standard / Sonnet / GPT-4o', detail: 'Claude Sonnet, GPT-4o, GPT-4.1', rate: 3, short: 'Standard ($3/1M)' },
+      { title: 'High-Reasoning / GPT-5+ / o3', detail: 'GPT-5, GPT-6, o3', rate: 5, short: 'Reasoning ($5/1M)' },
+      { title: 'Frontier / Opus', detail: 'Claude Opus', rate: 15, short: 'Frontier ($15/1M)' },
+    ];
 
-  const picked = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Select a detected Copilot/VS Code model or pricing tier',
-  });
-  if (!picked || picked.kind === vscode.QuickPickItemKind.Separator) return false;
-
-  let rate = picked.rate;
-  let shortLabel = picked.short;
-  if (rate < 0) {
-    const raw = await vscode.window.showInputBox({
-      prompt: 'Enter input token cost in USD per 1M tokens (e.g., 2.5)',
-      value: '3',
-      validateInput: (v) => (Number(v) > 0 ? undefined : 'Enter a positive number'),
+    const sections: InspectorSection[] = [];
+    if (detectedRows.length > 0) {
+      sections.push({ title: 'Detected in VS Code / Copilot', rows: detectedRows });
+    }
+    sections.push({
+      title: 'General Pricing Tiers',
+      rows: [
+        ...tiers.map((t) => ({
+          title: t.title,
+          badge: activeLabel === t.short ? { text: 'Active', tone: 'ok' as const } : undefined,
+          meta: `$${t.rate}/1M input`,
+          detail: t.detail,
+          actions: [{ id: 'pick', label: 'Select', payload: `${t.rate}::${t.short}` }],
+        })),
+        {
+          title: 'Custom Rate...',
+          detail: 'Enter any exact USD per 1M input token price',
+          actions: [{ id: 'custom', label: 'Enter Custom Rate' }],
+        },
+      ],
     });
-    if (!raw) return false;
-    rate = Number(raw);
-    shortLabel = `Custom ($${rate}/1M)`;
-  }
 
-  const cfg = vscode.workspace.getConfiguration('archpilot');
-  await cfg.update('costPerMillionInputTokens', rate, vscode.ConfigurationTarget.Global);
-  await cfg.update('modelPresetLabel', shortLabel, vscode.ConfigurationTarget.Global);
-  return true;
+    return {
+      viewId: 'archpilot-model-pricing',
+      tabTitle: 'Model Pricing Preset',
+      heading: 'AI Model Pricing Preset',
+      subheading: 'Used to estimate monthly token costs and savings across your repositories',
+      metrics: [
+        { label: 'Active Preset', value: activeLabel, tone: 'info' },
+        { label: 'Rate / 1M Input Tokens', value: `$${activeRate}` },
+      ],
+      sections,
+    };
+  };
+
+  openInspectorPanel(await buildModel(), async (actionId, payload) => {
+    const cfg = vscode.workspace.getConfiguration('archpilot');
+    if (actionId === 'pick' && payload) {
+      const [rateStr, ...rest] = payload.split('::');
+      const rate = Number(rateStr);
+      const shortLabel = rest.join('::');
+      await cfg.update('costPerMillionInputTokens', rate, vscode.ConfigurationTarget.Global);
+      await cfg.update('modelPresetLabel', shortLabel, vscode.ConfigurationTarget.Global);
+      if (onChanged) await onChanged();
+      return buildModel();
+    }
+    if (actionId === 'custom') {
+      const raw = await vscode.window.showInputBox({
+        prompt: 'Enter input token cost in USD per 1M tokens (e.g., 2.5)',
+        value: '3',
+        validateInput: (v) => (Number(v) > 0 ? undefined : 'Enter a positive number'),
+      });
+      if (!raw) return;
+      const rate = Number(raw);
+      const shortLabel = `Custom ($${rate}/1M)`;
+      await cfg.update('costPerMillionInputTokens', rate, vscode.ConfigurationTarget.Global);
+      await cfg.update('modelPresetLabel', shortLabel, vscode.ConfigurationTarget.Global);
+      if (onChanged) await onChanged();
+      return buildModel();
+    }
+  });
 }
