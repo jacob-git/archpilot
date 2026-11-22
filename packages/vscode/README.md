@@ -44,7 +44,7 @@ Right-click any repository in the **ArchPilot sidebar** or directly in the **VS 
 
 ### 6. Multi-Language Architecture, REST/OpenAPI, NFR & QA Checks
 - **6-Language Import Graph:** Circular dependencies & smart auto-generated `archpilot.json` boundaries for TS, JS, Java, Python, Go, and Rust.
-- **Spectral-Style OpenAPI & REST Linting:** Checks `info.description`, `servers`, `securitySchemes`, `operationId`, `4xx`/`5xx` error responses, RPC verbs in URIs, and kebab-case paths.
+- **Spectral-Style OpenAPI & REST Linting + Breaking-Change Diff:** Checks `info.description`, `servers`, `securitySchemes`, `operationId`, `4xx`/`5xx` error responses, RPC verbs in URIs, kebab-case paths, and **`Audit > Check OpenAPI Breaking Changes`** against `git HEAD` / `main`.
 - **Framework & NFR Guardrails:** Spring Boot (`@RestController`->`@Service`->`@Repository`, `@Valid`, `RestTemplate` timeouts, unbounded `.findAll()`, `@Autowired` fields), Next.js `'use client'` server leaks, FastAPI sync-in-async, HTTP timeouts, swallowed `catch {}`, blocking `*FileSync`, and missing `/healthz`.
 - **QA & Executive Reports:** Flaky-test sleep detection, skipped tests, missing assertions, and **Export Executive Report (HTML)**.
 

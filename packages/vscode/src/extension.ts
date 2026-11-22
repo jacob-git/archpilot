@@ -27,6 +27,7 @@ import {
 } from './reports.js';
 import {
   showBaselineComparisonPicker,
+  showOpenApiDiffPicker,
   showOrphanFilesPicker,
   showTokenBreakdownPicker,
   showUnusedDepsPicker,
@@ -423,6 +424,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('archpilot.compareBaseline', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to compare architecture baseline');
       if (audit) await showBaselineComparisonPicker(audit);
+    }),
+
+    vscode.commands.registerCommand('archpilot.checkOpenApiDiff', async (node?: CommandTarget) => {
+      const audit = await resolveAuditForNode(node, 'Select project folder to check OpenAPI breaking changes');
+      if (audit) await showOpenApiDiffPicker(audit);
     }),
 
     vscode.commands.registerCommand('archpilot.findOrphans', async (node?: CommandTarget) => {

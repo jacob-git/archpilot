@@ -2,6 +2,10 @@
 
 All notable changes to ArchPilot are documented in this file.
 
+## [1.0.0]
+- Added **OpenAPI Breaking-Change Diff** (`Audit > Check OpenAPI Breaking Changes` and `--api-diff`) to compare modified OpenAPI/Swagger YAML & JSON specs against `git HEAD` / `main` and catch removed endpoints, removed HTTP methods, removed 2xx responses, removed schema properties, and newly added `required` fields before merge.
+- First stable `1.0.0` release of ArchPilot.
+
 ## [0.9.0]
 - Added **Top Token Consumers Breakdown** (`Optimize > Inspect Token Breakdown` and `--tokens`) showing heaviest folders and files by estimated token count and `$/read`, with 1-click `.aiignore` exclusion.
 - Added **Unused Dependencies Finder** (`Optimize > Find Unused Dependencies` and `--unused-deps`) to flag `package.json` runtime dependencies never imported in source, with 1-click `npm uninstall` and AI Chat review.

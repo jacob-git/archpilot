@@ -42,8 +42,11 @@ npx archpilot . --migrate-md spring-boot-3-to-4
 
 # Find unreachable/dead files wasting AI tokens, or diff against a saved architecture baseline
 npx archpilot . --orphans
+npx archpilot . --tokens
+npx archpilot . --unused-deps
 npx archpilot . --save-baseline
 npx archpilot . --compare-baseline
+npx archpilot . --api-diff
 
 # Universal CI formats
 npx archpilot . --fail-under 80 --format sarif > archpilot.sarif
@@ -85,7 +88,7 @@ flowchart LR
 
 ### GitHub Actions
 ```yaml
-- uses: jacob-git/archpilot@v0.9.0
+- uses: jacob-git/archpilot@v1.0.0
   with:
     fail-under: "80"
 ```

@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   analyzeTokenBreakdown,
   compareAgainstBaseline,
+  diffOpenApiSpecs,
   findOrphanFiles,
   findUnusedDependencies,
   saveArchitectureBaseline,
@@ -125,4 +126,70 @@ test('findUnusedDependencies flags unimported package.json dependencies while ke
       );
     }
   );
+});
+
+test('diffOpenApiSpecs catches removed paths, methods, 2xx responses, removed properties, and new required fields in YAML', () => {
+  const oldYaml = `
+openapi: 3.0.3
+paths:
+  /v1/orders:
+    get:
+      responses:
+        '200':
+          description: ok
+    delete:
+      responses:
+        '204':
+          description: deleted
+  /v1/legacy:
+    get:
+      responses:
+        '200':
+          description: ok
+components:
+  schemas:
+    OrderRequest:
+      required:
+        - itemId
+      properties:
+        itemId:
+          type: string
+        note:
+          type: string
+`;
+
+  const newYaml = `
+openapi: 3.0.3
+paths:
+  /v1/orders:
+    get:
+      responses:
+        '201':
+          description: created
+  /v1/health:
+    get:
+      responses:
+        '200':
+          description: healthy
+components:
+  schemas:
+    OrderRequest:
+      required:
+        - itemId
+        - currency
+      properties:
+        itemId:
+          type: string
+        currency:
+          type: string
+`;
+
+  const res = diffOpenApiSpecs(oldYaml, newYaml, 'openapi.yaml');
+  const ruleIds = new Set(res.breakingChanges.map((b) => b.ruleId));
+  assert.ok(ruleIds.has('openapi-path-removed'), 'Expected removed /v1/legacy path');
+  assert.ok(ruleIds.has('openapi-method-removed'), 'Expected removed DELETE /v1/orders');
+  assert.ok(ruleIds.has('openapi-success-response-removed'), 'Expected removed 200 response');
+  assert.ok(ruleIds.has('openapi-schema-property-removed'), 'Expected removed note property');
+  assert.ok(ruleIds.has('openapi-schema-required-added'), 'Expected added required currency field');
+  assert.deepEqual(res.addedEndpoints, ['GET /v1/health']);
 });

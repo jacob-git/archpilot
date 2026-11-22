@@ -55,6 +55,8 @@ export type {
 } from './tokenBreakdown.js';
 export { findUnusedDependencies } from './unusedDeps.js';
 export type { UnusedDependencyInfo, UnusedDepsReport } from './unusedDeps.js';
+export { analyzeOpenApiBreakingChanges, diffOpenApiSpecs } from './openApiDiff.js';
+export type { OpenApiBreakingChange, OpenApiDiffReport } from './openApiDiff.js';
 export type {
   ArchPilotConfig,
   AuditOptions,

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { access, readFile, writeFile } from 'node:fs/promises';
 import {
+  analyzeOpenApiBreakingChanges,
   analyzeTokenBreakdown,
   BASELINE_FILENAME,
   compareAgainstBaseline,
@@ -419,6 +420,94 @@ export async function showUnusedDepsPicker(audit: FolderAudit): Promise<void> {
     }
   } else if (picked.action === 'openPkg' && picked.pkgPath) {
     const full = path.join(audit.rootDir, picked.pkgPath);
+    if (await fileExists(full)) {
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(full));
+    }
+  }
+}
+
+export async function showOpenApiDiffPicker(audit: FolderAudit): Promise<void> {
+  const res = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `ArchPilot: Checking OpenAPI breaking changes in ${audit.name}...`,
+      cancellable: false,
+    },
+    () => analyzeOpenApiBreakingChanges(audit.rootDir)
+  );
+
+  if (res.specsChecked === 0) {
+    void vscode.window.showInformationMessage(
+      `No OpenAPI / Swagger specification files found in ${audit.name}.`
+    );
+    return;
+  }
+
+  if (res.breakingChanges.length === 0) {
+    const extra =
+      res.addedEndpoints.length > 0 ? ` (+${res.addedEndpoints.length} new additive endpoints)` : '';
+    void vscode.window.showInformationMessage(
+      `0 OpenAPI breaking changes vs ${res.comparedAgainst} across ${res.specsChecked} spec${res.specsChecked === 1 ? '' : 's'}${extra}.`
+    );
+    return;
+  }
+
+  interface ApiDiffPick extends vscode.QuickPickItem {
+    action?: 'aiChat' | 'copySummary' | 'openFile';
+    relPath?: string;
+  }
+
+  const items: ApiDiffPick[] = [
+    {
+      label: '$(comment-discussion) Review Breaking Changes with AI Chat',
+      description: `${res.breakingChanges.length} breaking change${res.breakingChanges.length === 1 ? '' : 's'} vs ${res.comparedAgainst}`,
+      action: 'aiChat',
+    },
+    {
+      label: '$(copy) Copy Breaking-Change Summary (Markdown)',
+      description: 'Paste into PR review or API release notes',
+      action: 'copySummary',
+    },
+    {
+      label: `Breaking Changes (${res.breakingChanges.length})`,
+      kind: vscode.QuickPickItemKind.Separator,
+    },
+    ...res.breakingChanges.map((bc) => ({
+      label: `${bc.severity === 'error' ? '$(error)' : '$(warning)'} [${bc.ruleId}] ${bc.file}`,
+      description: bc.message,
+      detail: bc.suggestion,
+      action: 'openFile' as const,
+      relPath: bc.file,
+    })),
+  ];
+
+  const picked = await vscode.window.showQuickPick(items, {
+    title: `OpenAPI Breaking Changes (${audit.name} vs ${res.comparedAgainst})`,
+    placeHolder: 'Review with AI Chat, copy summary, or open spec file',
+  });
+  if (!picked) return;
+
+  const mdSummary = [
+    `### OpenAPI Breaking Changes (${audit.name} vs \`${res.comparedAgainst}\`)`,
+    '',
+    ...res.breakingChanges.map(
+      (bc) => `- **[${bc.severity.toUpperCase()} / ${bc.ruleId}]** \`${bc.file}\`: ${bc.message} (${bc.suggestion})`
+    ),
+  ].join('\n');
+
+  if (picked.action === 'copySummary') {
+    await vscode.env.clipboard.writeText(mdSummary);
+    void vscode.window.showInformationMessage('Copied OpenAPI breaking-change summary to clipboard.');
+  } else if (picked.action === 'aiChat') {
+    const prompt = `Please help resolve or safely version these OpenAPI breaking changes in **${audit.name}**:\n\n${mdSummary}`;
+    try {
+      await vscode.commands.executeCommand('workbench.action.chat.open', { query: prompt });
+    } catch {
+      await vscode.env.clipboard.writeText(prompt);
+      void vscode.window.showInformationMessage('Copied OpenAPI review prompt to clipboard.');
+    }
+  } else if (picked.action === 'openFile' && picked.relPath) {
+    const full = path.join(audit.rootDir, picked.relPath);
     if (await fileExists(full)) {
       await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(full));
     }

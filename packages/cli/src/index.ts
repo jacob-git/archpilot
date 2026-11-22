@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   analyzeBlastRadius,
   analyzeMigration,
+  analyzeOpenApiBreakingChanges,
   analyzeTokenBreakdown,
   auditRepository,
   buildArchitectureDiagram,
@@ -158,6 +159,7 @@ async function main(): Promise<void> {
   let unusedDepsMode = false;
   let saveBaselineMode = false;
   let compareBaselineMode = false;
+  let apiDiffMode = false;
   let diffMode = false;
   let failUnder: number | undefined;
 
@@ -203,6 +205,8 @@ async function main(): Promise<void> {
       saveBaselineMode = true;
     } else if (arg === '--compare-baseline') {
       compareBaselineMode = true;
+    } else if (arg === '--api-diff') {
+      apiDiffMode = true;
     } else if (arg === '--diff') {
       diffMode = true;
     } else if (arg === '--fail-under') {
@@ -231,6 +235,7 @@ Options:
   --unused-deps                Find unused package.json dependencies never imported in source
   --save-baseline              Save .archpilot-baseline.json snapshot before refactors/upgrades
   --compare-baseline           Compare current architecture against .archpilot-baseline.json
+  --api-diff                   Check modified OpenAPI/Swagger specs for breaking changes vs HEAD/main
   --diff                       Analyze git changed files, blast radius, and QA test gaps
   --format <fmt>               Output format: text | json | sarif | markdown | html (default: text)
   --json                       Alias for --format json
@@ -409,6 +414,29 @@ Options:
       console.log('');
     }
     if (diff.status === 'regressed') process.exitCode = 1;
+    return;
+  }
+  if (apiDiffMode) {
+    const res = await analyzeOpenApiBreakingChanges(resolved);
+    if (format === 'json') {
+      console.log(JSON.stringify(res, null, 2));
+    } else {
+      console.log('');
+      console.log(`${BOLD}ArchPilot OpenAPI Breaking-Change Diff${RESET}  ${DIM}(vs ${res.comparedAgainst}, ${res.specsChecked} specs checked)${RESET}`);
+      if (res.specsChecked === 0) {
+        console.log('No OpenAPI / Swagger specs found in this repository.');
+      } else if (res.breakingChanges.length === 0) {
+        console.log(`${GREEN}${BOLD}0 breaking changes detected.${RESET}${res.addedEndpoints.length > 0 ? ` (+${res.addedEndpoints.length} additive endpoints)` : ''}`);
+      } else {
+        for (const bc of res.breakingChanges) {
+          console.log(`  ${severityTag(bc.severity)} [${bc.ruleId}] ${DIM}${bc.file}${RESET}: ${bc.message}`);
+        }
+      }
+      console.log('');
+    }
+    if (res.breakingChanges.some((b) => b.severity === 'error')) {
+      process.exitCode = 1;
+    }
     return;
   }
   if (diffMode) {

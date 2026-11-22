@@ -2,7 +2,7 @@
   "name": "archpilot-studio",
   "displayName": "ArchPilot",
   "description": "Executable architecture guardrails and AI-readiness auditor for VS Code, Cursor, and Windsurf",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "publisher": "Pallattu",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -246,6 +246,12 @@
         "title": "Find Unused Dependencies",
         "category": "ArchPilot",
         "icon": "$(package)"
+      },
+      {
+        "command": "archpilot.checkOpenApiDiff",
+        "title": "Check OpenAPI Breaking Changes",
+        "category": "ArchPilot",
+        "icon": "$(git-compare)"
       }
     ],
     "submenus": [
@@ -458,6 +464,11 @@
           "command": "archpilot.compareBaseline",
           "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_audit@5"
+        },
+        {
+          "command": "archpilot.checkOpenApiDiff",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
+          "group": "1_audit@6"
         }
       ],
       "archpilot.optimize": [
@@ -547,7 +558,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archpilot/core": "0.9.0"
+    "@archpilot/core": "1.0.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
