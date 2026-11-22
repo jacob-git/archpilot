@@ -675,27 +675,47 @@ export function activate(context: vscode.ExtensionContext): void {
       const hasBloatedInstructions = audit.report.findings.some(
         (f) => f.id === 'instruction-token-budget'
       );
+      const suggestArchMap =
+        audit.report.summary.codeFiles >= 15 &&
+        !(await exists(path.join(audit.rootDir, 'ARCHMAP.md')));
+
+      const maybeGenerateArchMap = async (choice?: string): Promise<void> => {
+        if (choice !== 'Generate ARCHMAP.md') return;
+        const content = await generateArchMap(audit.rootDir);
+        const target = path.join(audit.rootDir, 'ARCHMAP.md');
+        await writeFile(target, content, 'utf8');
+        await openFileInEditor(target);
+      };
 
       if (addedCount > 0 && !hasBloatedInstructions) {
-        void vscode.window.showInformationMessage(
-          `Added ${addedCount} large file${addedCount > 1 ? 's' : ''} to .aiignore & .cursorignore (est. savings ~$${savedEstimate.toFixed(2)}/mo/dev).`
-        );
+        const msg = `Added ${addedCount} large file${addedCount > 1 ? 's' : ''} to .aiignore & .cursorignore (est. savings ~$${savedEstimate.toFixed(2)}/mo/dev).`;
+        const choice = suggestArchMap
+          ? await vscode.window.showInformationMessage(msg, 'Generate ARCHMAP.md')
+          : (void vscode.window.showInformationMessage(msg), undefined);
+        await maybeGenerateArchMap(choice);
       } else if (hasBloatedInstructions) {
         const msg =
           addedCount > 0
             ? `Added ${addedCount} large files to .aiignore & .cursorignore. Always-on instructions are still ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn. Copy a compression prompt?`
             : `Always-on instructions are ~${tf.alwaysOnInstructionTokens.toLocaleString('en-US')} tokens/turn (~$${tf.costEstimate.alwaysOnMonthlyUsd.toFixed(2)}/mo/dev). Copy a prompt to compress them by 50%?`;
-        const choice = await vscode.window.showInformationMessage(msg, 'Copy Compression Prompt');
+        const buttons = suggestArchMap
+          ? ['Copy Compression Prompt', 'Generate ARCHMAP.md']
+          : ['Copy Compression Prompt'];
+        const choice = await vscode.window.showInformationMessage(msg, ...buttons);
         if (choice === 'Copy Compression Prompt') {
           await vscode.env.clipboard.writeText(
             `Please compress the always-on AI instruction files (AGENTS.md / CLAUDE.md / .cursor/rules) in **${audit.name}** by ~50% (target under 2,500 total tokens) while keeping every critical command, architecture boundary, and convention intact. Move verbose examples into on-demand docs.`
           );
           void vscode.window.showInformationMessage('Copied instruction compression prompt to clipboard.');
+        } else {
+          await maybeGenerateArchMap(choice);
         }
       } else {
-        void vscode.window.showInformationMessage(
-          `${audit.name} already has 0 unignored large files and lean instruction tokens.`
-        );
+        const msg = `${audit.name} already has 0 unignored large files and lean instruction tokens.`;
+        const choice = suggestArchMap
+          ? await vscode.window.showInformationMessage(msg, 'Generate ARCHMAP.md')
+          : (void vscode.window.showInformationMessage(msg), undefined);
+        await maybeGenerateArchMap(choice);
       }
     }),
 

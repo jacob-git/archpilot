@@ -36,6 +36,11 @@ export async function generateAgentsMd(rootDir: string): Promise<string> {
       ? topDirs.map((d) => `- \`${d}/\`: TODO: describe module responsibility`).join('\n')
       : '- Describe your primary source directories here.';
 
+  const hasArchMap = files.some((f) => f.relPath === 'ARCHMAP.md');
+  const archMapLine = hasArchMap
+    ? '\n- Read `ARCHMAP.md` first for a compact module index before searching the repository.'
+    : '';
+
   return `# AGENTS.md: ${repoName}
 
 ## Overview
@@ -49,7 +54,7 @@ ${layoutSection}
 
 ## Architecture Guardrails
 - Follow module boundaries defined in \`archpilot.json\`.
-- Keep files focused and modular (avoid mega-files > ${DEFAULT_CONFIG.maxFileLines} lines).
+- Keep files focused and modular (avoid mega-files > ${DEFAULT_CONFIG.maxFileLines} lines).${archMapLine}
 - Always run tests and typechecks before finishing a task.
 `;
 }

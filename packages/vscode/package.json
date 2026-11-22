@@ -171,7 +171,7 @@
       },
       {
         "command": "archpilot.generateArchMap",
-        "title": "Generate ARCHMAP.md (Compact Repo Map)",
+        "title": "Generate / Update ARCHMAP.md (Compact Repo Map)",
         "category": "ArchPilot",
         "icon": "$(map)"
       },
@@ -467,24 +467,29 @@
           "group": "1_optimize@1"
         },
         {
-          "command": "archpilot.tokenBreakdown",
+          "command": "archpilot.generateArchMap",
           "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_optimize@2"
         },
         {
-          "command": "archpilot.findOrphans",
+          "command": "archpilot.tokenBreakdown",
           "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_optimize@3"
         },
         {
-          "command": "archpilot.findUnusedDeps",
+          "command": "archpilot.findOrphans",
           "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
           "group": "1_optimize@4"
         },
         {
+          "command": "archpilot.findUnusedDeps",
+          "when": "viewItem =~ /^archpilot\\.project(\\b|$)/ || explorerResourceIsRoot",
+          "group": "1_optimize@5"
+        },
+        {
           "command": "archpilot.copyFixPrompt",
           "when": "viewItem =~ /^archpilot\\.project.*\\.issues(\\b|$)/ || explorerResourceIsRoot",
-          "group": "1_optimize@5"
+          "group": "1_optimize@6"
         },
         {
           "command": "archpilot.selectModelPreset",
