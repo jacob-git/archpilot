@@ -2,6 +2,10 @@
 
 All notable changes to ArchPilot are documented in this file.
 
+## [1.1.0]
+- Replaced QuickPick result lists with a dedicated, theme-aware **ArchPilot Inspector Webview** panel that opens side-by-side in the editor and stays open while you work.
+- Upgraded **Dependency CVE Audit**, **Token Breakdown**, **Upgrade & Migration Plan**, **Git Diff & Blast Radius**, **Architecture Baseline Diff**, **Orphan / Dead Files**, **Unused Dependencies**, and **OpenAPI Breaking Changes** to render rich KPI cards, severity badges, live token bars, and per-row action buttons (`Open`, `Exclude`, `Advisory`, `Run npm audit fix`, `Send to AI Chat`).
+
 ## [1.0.0]
 - Added **OpenAPI Breaking-Change Diff** (`Audit > Check OpenAPI Breaking Changes` and `--api-diff`) to compare modified OpenAPI/Swagger YAML & JSON specs against `git HEAD` / `main` and catch removed endpoints, removed HTTP methods, removed 2xx responses, removed schema properties, and newly added `required` fields before merge.
 - First stable `1.0.0` release of ArchPilot.

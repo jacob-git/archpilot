@@ -433,12 +433,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('archpilot.findOrphans', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to find orphan / dead files');
-      if (audit && (await showOrphanFilesPicker(audit))) await runAudit();
+      if (audit) await showOrphanFilesPicker(audit, runAudit);
     }),
 
     vscode.commands.registerCommand('archpilot.tokenBreakdown', async (node?: CommandTarget) => {
       const audit = await resolveAuditForNode(node, 'Select project folder to inspect token breakdown');
-      if (audit && (await showTokenBreakdownPicker(audit))) await runAudit();
+      if (audit) await showTokenBreakdownPicker(audit, runAudit);
     }),
 
     vscode.commands.registerCommand('archpilot.findUnusedDeps', async (node?: CommandTarget) => {
